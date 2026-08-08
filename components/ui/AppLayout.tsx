@@ -54,7 +54,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <Link href="/historikk" className="transition-colors hover:text-white">
                   Mine tilbud
                 </Link>
-                <Link href="/innstillinger" className="transition-colors hover:text-white">
+                <Link href="/historikk/invoices" className="transition-colors hover:text-white">
+                  Fakturaer
+                </Link>
+                <Link href="/kunder" className="transition-colors hover:text-white">
+                  Kunder
+                </Link>
+                <Link href="/innstillinger/firma" className="transition-colors hover:text-white">
                   Mitt firma
                 </Link>
                 <span className="text-white/40">{session.user?.email}</span>

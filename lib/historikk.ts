@@ -37,6 +37,21 @@ export async function hentAlleTilbud(userId: string): Promise<LagretTilbud[]> {
   return (data as TilbudRad[]).map(radTilLagretTilbud)
 }
 
+export async function hentTilbud(userId: string, id: string): Promise<LagretTilbud | null> {
+  const { data, error } = await supabase
+    .from('tilbud')
+    .select('id, created_at, data')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Klarte ikke å hente tilbud: ${error.message}`)
+  }
+
+  return data ? radTilLagretTilbud(data as TilbudRad) : null
+}
+
 export async function lagreTilbud(
   userId: string,
   firmaId: string | null,

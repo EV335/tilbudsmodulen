@@ -35,6 +35,8 @@ export async function POST(req: NextRequest) {
       orgnr?: string
       adresse?: string
       logoDataUrl?: string
+      bankkonto?: string
+      betalingsbetingelserDager?: number
     }
 
     if (!body.firmanavn) {
@@ -73,6 +75,8 @@ export async function POST(req: NextRequest) {
           firmanavn: body.firmanavn,
           orgnr: body.orgnr || null,
           adresse: body.adresse || null,
+          bankkonto: body.bankkonto || null,
+          betalingsbetingelser_dager: body.betalingsbetingelserDager ?? 14,
           ...(logoUrl ? { logo_url: logoUrl } : {}),
         },
         { onConflict: 'user_id' }

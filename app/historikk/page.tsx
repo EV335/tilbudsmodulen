@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { LagretTilbud } from '@/lib/historikk'
 import Section from '@/components/ui/Section'
@@ -89,8 +90,15 @@ export default function HistorikkPage() {
 
   return (
     <Section size="lg">
-      <h1 className="text-3xl md:text-4xl font-black mb-2">Historikk</h1>
-      <p className="text-white/70 mb-8">Tidligere lagrede tilbud.</p>
+      <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-black mb-2">Historikk</h1>
+          <p className="text-white/70">Tidligere lagrede tilbud.</p>
+        </div>
+        <Link href="/historikk/invoices" className="text-white/60 hover:text-white text-sm font-medium self-center">
+          Se fakturaer →
+        </Link>
+      </div>
 
       {feil && <p className="text-red-400 mb-6">{feil}</p>}
 
@@ -121,6 +129,13 @@ export default function HistorikkPage() {
             </div>
             <div className="flex items-center gap-4">
               <div className="text-xl font-black text-blue">{formatKr(tilbud.resultat.pris)}</div>
+              <Link
+                href={`/historikk/invoices/ny?tilbudId=${tilbud.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-sm font-medium text-blue hover:underline"
+              >
+                Fakturér
+              </Link>
               <button onClick={(e) => slett(tilbud.id, e)} className="text-sm font-medium text-red-600 hover:underline">
                 Slett
               </button>
