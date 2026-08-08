@@ -48,19 +48,31 @@ export default function HistorikkPage() {
   function visTilbud(tilbud: LagretTilbud) {
     sessionStorage.setItem(
       'tilbudsmaskinen:resultat',
-      JSON.stringify({ input: tilbud.input, resultat: tilbud.resultat })
+      JSON.stringify({ id: tilbud.id, input: tilbud.input, resultat: tilbud.resultat })
     )
     router.push('/result')
   }
 
   async function slett(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    await fetch(`/api/tilbud/${id}`, { method: 'DELETE' })
-    setListe((prev) => prev?.filter((t) => t.id !== id) ?? null)
+    if (!window.confirm('Slette dette tilbudet? Dette kan ikke angres.')) return
+
+    setFeil(null)
+    try {
+      const res = await fetch(`/api/tilbud/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Sletting feilet')
+      setListe((prev) => prev?.filter((t) => t.id !== id) ?? null)
+    } catch {
+      setFeil('Klarte ikke å slette tilbudet. Prøv igjen.')
+    }
   }
 
   if (status === 'loading') {
-    return null
+    return (
+      <Section spacing="none" className="py-16 text-center">
+        <p className="text-white/50">Laster...</p>
+      </Section>
+    )
   }
 
   if (status === 'unauthenticated') {
@@ -80,10 +92,14 @@ export default function HistorikkPage() {
       <h1 className="text-3xl md:text-4xl font-black mb-2">Historikk</h1>
       <p className="text-white/70 mb-8">Tidligere lagrede tilbud.</p>
 
-      {feil && <p className="text-red-400">{feil}</p>}
+      {feil && <p className="text-red-400 mb-6">{feil}</p>}
+
+      {liste === null && !feil && <p className="text-white/60">Laster historikk...</p>}
 
       {liste && liste.length === 0 && (
-        <p className="text-white/60">Ingen lagrede tilbud ennå. Lagre et tilbud fra resultatsiden.</p>
+        <Card padding="md">
+          <p className="text-black/60">Ingen lagrede tilbud ennå. Lagre et tilbud fra resultatsiden.</p>
+        </Card>
       )}
 
       <div className="space-y-3">

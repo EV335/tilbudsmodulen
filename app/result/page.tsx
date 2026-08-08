@@ -8,6 +8,7 @@ import Section from '@/components/ui/Section'
 import Button from '@/components/ui/Button'
 
 interface Lagret {
+  id?: string
   input: TilbudInput
   resultat: TilbudResult
 }
@@ -48,7 +49,7 @@ export default function ResultPage() {
           Ny beregning
         </Link>
       </div>
-      <ResultCard resultat={data.resultat} input={data.input} />
+      <ResultCard resultat={data.resultat} input={data.input} tilbudId={data.id} />
     </Section>
   )
 }

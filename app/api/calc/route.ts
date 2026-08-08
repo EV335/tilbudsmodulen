@@ -33,9 +33,14 @@ export async function POST(req: NextRequest) {
       Number.isNaN(input.timepris) ||
       Number.isNaN(input.materialkost) ||
       input.romstorrelseM2 <= 0 ||
-      input.timepris <= 0
+      input.timepris <= 0 ||
+      input.materialkost < 0
     ) {
       return NextResponse.json({ error: 'Ugyldige tallverdier i input.' }, { status: 400 })
+    }
+
+    if (input.romstorrelseM2 > 100000 || input.timepris > 100000 || input.materialkost > 100000000) {
+      return NextResponse.json({ error: 'Verdiene er urealistisk høye. Sjekk tallene og prøv igjen.' }, { status: 400 })
     }
 
     const result = await genererTilbud(input)

@@ -90,9 +90,13 @@ export async function genererTilbud(input: TilbudInput): Promise<TilbudResult> {
     return beregnLokaltEstimat(input)
   }
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 20000)
+
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
@@ -151,5 +155,7 @@ export async function genererTilbud(input: TilbudInput): Promise<TilbudResult> {
   } catch (err) {
     console.error('AI-kall feilet, faller tilbake til lokalt estimat:', err)
     return beregnLokaltEstimat(input)
+  } finally {
+    clearTimeout(timeout)
   }
 }

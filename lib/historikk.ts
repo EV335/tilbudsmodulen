@@ -62,6 +62,31 @@ export async function lagreTilbud(
   return radTilLagretTilbud(data as TilbudRad)
 }
 
+export async function oppdaterTilbud(
+  userId: string,
+  id: string,
+  input: TilbudInput,
+  resultat: TilbudResult
+): Promise<LagretTilbud> {
+  const { data, error } = await supabase
+    .from('tilbud')
+    .update({
+      kunde_navn: input.kundenavn || null,
+      pris: resultat.pris,
+      data: { input, resultat },
+    })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('id, created_at, data')
+    .single()
+
+  if (error) {
+    throw new Error(`Klarte ikke å oppdatere tilbud: ${error.message}`)
+  }
+
+  return radTilLagretTilbud(data as TilbudRad)
+}
+
 export async function slettTilbud(userId: string, id: string): Promise<void> {
   const { error } = await supabase.from('tilbud').delete().eq('id', id).eq('user_id', userId)
 

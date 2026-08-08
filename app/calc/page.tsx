@@ -40,7 +40,11 @@ export default function CalcPage() {
   }
 
   if (status === 'loading') {
-    return null
+    return (
+      <Section spacing="none" className="py-16 text-center">
+        <p className="text-white/50">Laster...</p>
+      </Section>
+    )
   }
 
   if (status === 'unauthenticated') {

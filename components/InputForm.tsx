@@ -50,6 +50,7 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
           label="Romstørrelse (m²)"
           type="number"
           min="1"
+          max="100000"
           step="any"
           required
           value={romstorrelseM2}
@@ -62,6 +63,7 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
           label="Timepris (kr)"
           type="number"
           min="1"
+          max="100000"
           step="any"
           required
           value={timepris}
@@ -76,6 +78,7 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
           label="Estimert materialkostnad (kr)"
           type="number"
           min="0"
+          max="100000000"
           step="any"
           value={materialkost}
           onChange={(e) => setMaterialkost(e.target.value)}
