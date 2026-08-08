@@ -1,102 +1,13 @@
-# TilbudsMaskinen — status
+﻿# CURRENT_TASK
 
-## Hva vi har bygget
-Full demo-app for TilbudsMaskinen (Next.js App Router + TypeScript + Tailwind):
-- **Sider**: landing (`/`), kalkulator (`/calc`), resultat (`/result`), historikk (`/historikk`), fakturaoversikt (`/historikk/invoices`), kunderegister (`/kunder`), firmaoppsett (`/innstillinger/firma`), innlogging (`/logg-inn` + `/logg-inn/sjekk-e-post`)
-- **AI-kalkulasjon**: `/api/calc` mot OpenAI, med lokalt fallback-estimat (prisbibliotek per fagtype) hvis nøkkel mangler/feiler
-- **PDF-eksport**: tilbud client-side via jsPDF (firmalogo/navn som brevhode); fakturaer server-side (samme jsPDF-bibliotek, som også kjører i Node)
-- **Betaling og fakturering (Stripe)**: Checkout for Privat-kunder, PaymentIntent + Stripe Customer for Bedrift-kunder, webhook med signaturverifisering og idempotency — se egen seksjon lenger ned og `docs/payments-setup.md`
-- **Innlogging**: NextAuth (`EmailProvider`, magic-link) med en egen lokal Supabase-adapter (`lib/supabaseAuthAdapter.ts`) mot `public`-skjemaet — den offisielle `@next-auth/supabase-adapter` hardkoder `next_auth`-skjema, som krevde PostgREST-eksponering som viste seg upålitelig
-- **Lagring**: firma, tilbud, kunder, fakturaer og betalinger lagres i Supabase (`public.users/firma/tilbud/kunder/customers/invoices/payments`), API-ruter beskyttet med `getServerSession`
-- **Ruteecbeskyttelse**: `middleware.ts` krever innlogging for `/calc`, `/historikk`, `/innstillinger`, `/kunder`
-- **UI-bibliotek**: `components/ui/{Button,Card,Section,Input,Select,Textarea,AppLayout}`, brukt konsekvent på alle sider
-- **Feilsider**: `app/error.tsx`, `app/global-error.tsx`, `app/not-found.tsx` (norsk tekst, matcher designsystemet)
+Auto-mode stabilisering fullført (commit e31d29a).
 
-## Åpne bugs / blokkere
-1. ~~Git-commit blokkert~~ — **løst**. Initial commit (`6b247e7`) finnes, working tree er clean.
-2. ~~SMTP-brukernavn feil~~ — **løst**. `EMAIL_SERVER_USER` endret fra `apikey` til `resend` i `.env.local` (bekreftet: kom forbi 550-autentiseringsfeilen i live-test).
-3. ~~Resend-domenet er ikke verifisert~~ — **midlertidig løst for testing**. `EMAIL_FROM` er endret til `onboarding@resend.dev` (Resends sandbox-avsender) i `.env.local`. Live-test bekreftet: magic-link sendes nå uten feil til `tilbudsmaskinen.no@gmail.com` (kontoens egen adresse — sandbox-modus tillater kun sending til denne).
-   **VIKTIG begrensning:** I sandbox-modus kan Resend KUN sende til `tilbudsmaskinen.no@gmail.com`. Ekte kunder (andre e-postadresser) vil fortsatt få feil ved innlogging. Før reell lansering må domenet `tilbudsmaskinen.no` verifiseres på resend.com/domains (DNS-records), og `EMAIL_FROM` byttes tilbake til `noreply@tilbudsmaskinen.no`.
-4. ~~Diskplass kritisk lav~~ — **løst**. Årsak funnet: `C:\Users\event\AppData\Local\CapCut\User Data\Cache` (videoredigeringsapp) hadde vokst til **28,9 GB** ren mellomlagring. Slettet med brukerens eksplisitte tillatelse 2026-08-08. Ledig plass gikk fra ~0,27 GB → **32,5 GB**. Prosjektfilene i `CapCut\User Data\Projects` (0,73 GB) ble ikke rørt.
-   - Sekundær opprydding vurdert, men ikke gjort: `CapCut\Apps` har 15,2 GB fordelt på 9 gamle auto-oppdaterte versjonsmapper (kun nyeste, `6.7.0.2661`, trengs egentlig) — kan fris ~13,5 GB til hvis ønskelig. `AppData\Local\Packages` (14,8 GB) og `AppData\Local\Google` (8,6 GB, Chrome-profil/cache) er ikke gransket i detalj.
-5. `.claude/launch.json` er endret: `runtimeExecutable` peker nå direkte på `node.exe` + `node_modules/next/dist/bin/next` i stedet for `npm.cmd`, fordi Node ikke ligger i systemets PATH på denne maskinen og `npm.cmd` derfor ikke fant `node`.
+Nye moduler lagt til via patch:
+- Migrasjoner: payments, invoices, customers, firma
+- API: payments/create-checkout, payments/create-payment-intent, webhooks/stripe
+- Libs: lib/payments.ts, lib/invoice.ts
+- Frontend: CheckoutButton, PaymentIntentForm, Firma page, Invoices page, InvoiceView
+- Docs: docs/payments-setup.md
 
-## Umiddelbar neste oppgave
-1. Når brukeren er klar for ekte kunder: verifisere `tilbudsmaskinen.no` i Resend (resend.com/domains) og bytte `EMAIL_FROM` tilbake til `noreply@tilbudsmaskinen.no`.
+Status: patch applied (pending). Kjør migrasjoner i Supabase og sett env vars som dokumentert i docs/payments-setup.md.
 
-## Auto-mode produksjonsherding — 2026-08-08
-
-Kjørte en full gjennomgang av alle 5 moduler (Historikk, PDF, Kalkulator, Innlogging, UI) på oppdrag fra brukeren, uten å røre `.env.local` eller Resend-domenelogikken. Alle filer lest og revidert manuelt; TypeScript kompilerer rent (`tsc --noEmit`) etter endringene.
-
-**Historikk (full CRUD)**
-- Lagt til ekte **Update**: `PATCH /api/tilbud/[id]` + `oppdaterTilbud()` i `lib/historikk.ts`. Tidligere fantes kun Create/Read/Delete — å åpne et tilbud fra historikk og lagre på nytt laget en **duplikat**-rad i stedet for å oppdatere. `ResultCard` husker nå hvilken rad den kom fra (`tilbudId`) og kaller PATCH i stedet for POST når det er satt; knapptekst bytter til "Oppdater i historikk".
-- Fikset reell bug i sletting: `slett()` i `app/historikk/page.tsx` fjernet raden fra UI **uansett om server-kallet feilet** (sjekket ikke `res.ok`). Lagt til feilsjekk + `window.confirm()` før sletting + feilmelding ved mislykket sletting.
-- Lagt til "Laster historikk..."-tekst i stedet for blankt innhold mens listen hentes.
-
-**PDF-eksport**
-- Firmalogo ble tidligere **strukket/klemt** til en fast 90×40pt boks uansett proporsjoner. Henter nå ekte bildedimensjoner (`Image().naturalWidth/Height`) og skalerer proporsjonalt innenfor boksen.
-- Lange tilbudstekster kunne renne **utenfor A4-arket** uten sideskift (`doc.text()` med hele linjearrayet, ingen høydesjekk). Skriver nå linje for linje med `doc.addPage()` når teksten når bunnmargen.
-- `handleLastNedPdf` manglet feilhåndtering — hvis PDF-generering kastet en feil, ble knappen stående på "Lager PDF..." for alltid. Lagt til try/catch/finally og en feilmelding i UI.
-- La til dato i toppteksten (høyre hjørne) for et mer komplett brevhode.
-
-**Kalkulator**
-- OpenAI-kallet i `lib/ai.ts` hadde **ingen timeout** — et hengende API-kall ville blokkere hele forespørselen i stedet for å falle raskt tilbake til lokalt estimat. Lagt til `AbortController` med 20s timeout.
-- Lagt til øvre fornuftsgrenser server-side i `/api/calc` (maks 100 000 m², 100 000 kr/t, 100 mill. kr materialkost) og tilsvarende `max`-attributter i skjemaet, som forsvar mot useriøse/feilaktige input-verdier.
-
-**Innlogging/NextAuth**
-- **Reell bug funnet og fikset**: `middleware.ts` brukte NextAuths `withAuth` uten å oppgi `pages`-konfigurasjon. Det gjorde at uinnloggede brukere som gikk direkte til `/calc`, `/historikk` eller `/innstillinger` ble sendt til NextAuths **stygge, innebygde** `/api/auth/signin`-side i stedet for appens egen `/logg-inn`-side. Bekreftet fikset i live-test: `/calc` → `/logg-inn?callbackUrl=%2Fcalc` (var før: `/api/auth/signin`).
-- Ingen endringer i `.env.local`, Resend-oppsett eller sandbox/domene-logikk, som instruert.
-
-**UI/design-konsistens**
-- `app/error.tsx`, `app/global-error.tsx` og `app/not-found.tsx` var **helt ustylte** (ren svart tekst, ingen kobling til designsystemet) — stod i sterk kontrast til resten av den mørke, gull/blå-profilerte appen. Skrevet om med `Section`/`Button` og norsk, hjelpsom tekst + handlingsknapper ("Prøv igjen", "Gå til forsiden"). `error.tsx` brukte heller ikke Next.js' `reset()`-callback — lagt til, så brukeren faktisk kan prøve på nytt uten full reload.
-- Lagt til konsistent "Laster..."-tilstand på `/calc`, `/historikk`, `/innstillinger` i stedet for blankt innhold mens sesjonen sjekkes.
-- "Ingen lagrede tilbud"-meldingen i historikk er nå pakket i en `Card`, konsistent med resten av appens innholdsblokker.
-
-**Testing utført**
-- `tsc --noEmit`: ingen typefeil.
-- Live i nettleser: uinnlogget `/calc` og `/historikk` redirecter nå korrekt til `/logg-inn?callbackUrl=...`. `/api/tilbud`, `/api/firma`, `/api/calc` returnerer fortsatt 401 uinnlogget. Ny `not-found.tsx` verifisert visuelt (skjermbilde tatt, matcher designsystemet).
-- **Ikke testet live**: de innloggede skjermene (lagre/åpne/oppdatere/slette tilbud, PDF-nedlasting, firmaoppsett) krever å klikke en ekte magic-link, som krever tilgang til innboksen `tilbudsmaskinen.no@gmail.com`. Jeg forsøkte å generere en gyldig NextAuth-sesjonstoken direkte for å simulere innlogging til testformål — dette ble korrekt blokkert av et sikkerhetsfilter (i praksis er det å forfalske en autentiseringstoken), og jeg gikk ikke rundt blokkeringen. Disse skjermene er i stedet verifisert grundig via manuell kodegjennomgang av alle relevante filer + typesjekk.
-
-## Neste steg (før betalingsmodulen)
-1. Klikk gjennom en ekte magic-link (fra `tilbudsmaskinen.no@gmail.com`-innboksen) for å bekrefte de innloggede skjermene fungerer live — spesielt "Oppdater i historikk"-flyten og PDF med logo.
-2. Når klar for ekte kunder: verifiser `tilbudsmaskinen.no` i Resend og bytt `EMAIL_FROM` tilbake (se punkt 3 over).
-3. Valgfritt: fullfør sekundær diskopprydding (`CapCut\Apps` gamle versjoner, Chrome-cache) — se punkt 4 over.
-
-## Betaling og fakturering (Stripe) — 2026-08-08
-
-Implementert på oppdrag fra brukeren: Stripe-betaling (Privat = Checkout,
-Bedrift = PaymentIntent + Customer), fakturasystem med server-generert PDF,
-kunderegister, og tilhørende UI. Full detaljert dokumentasjon i
-[`docs/payments-setup.md`](docs/payments-setup.md) — dette er et sammendrag.
-
-**Nye filer:**
-- `migrations/20260808_create_payments_invoices_customers.sql` — `customers`, `invoices`, `payments`, `invoice_seq`, `next_invoice_number()`, `firma.betalingsbetingelser_dager`/`bankkonto`, `invoices`-storage-bucket
-- `lib/stripe.ts`, `lib/payments.ts`, `lib/invoice.ts`, `lib/fakturaStatus.ts`
-- `app/api/payments/create-checkout/route.ts`, `app/api/payments/create-payment-intent/route.ts`, `app/api/webhooks/stripe/route.ts`
-- `app/api/invoices/route.ts`, `app/api/invoices/[id]/route.ts`, `app/api/invoices/[id]/resend/route.ts`, `app/api/customers/route.ts`
-- `components/payments/CheckoutButton.tsx`, `components/payments/PaymentIntentForm.tsx`, `components/invoice/InvoiceView.tsx`
-- `app/historikk/invoices/page.tsx`, `app/historikk/invoices/[id]/page.tsx`, `app/historikk/invoices/ny/page.tsx`, `app/kunder/page.tsx`, `app/innstillinger/firma/page.tsx`
-- `docs/payments-setup.md`
-
-**Endrede filer:**
-- `lib/historikk.ts` (+ `hentTilbud`), `app/api/firma/route.ts` (+ bankkonto/betalingsbetingelser), `app/historikk/page.tsx` (+ "Fakturér"-lenke og lenke til fakturaoversikt), `app/innstillinger/page.tsx` (nå ren redirect til `/innstillinger/firma`), `components/ui/AppLayout.tsx` (+ nav-lenker Fakturaer/Kunder), `middleware.ts` (+ `/kunder`-matcher), `package.json` (+ `stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`)
-
-**Bevisste avvik fra oppgavespesifikasjonen** (utdypet i docs/payments-setup.md):
-1. `customers` opprettet som EGEN tabell ved siden av den eksisterende `kunder`-tabellen (overlapper i praksis — anbefalt slått sammen senere).
-2. Betalt faktura beholder status `paid` selv om PDF/e-post-steget feiler etterpå (spesifikasjonen ba om `FAILED`, men det ville feilaktig fortalt en betalende kunde at betalingen mislyktes — feilen logges i stedet).
-3. `/innstillinger` er nå en redirect til `/innstillinger/firma` (unngår duplisert firmaskjema to steder).
-4. Ingen offentlig, uinnlogget betalingsside for sluttkunden ennå — "Betal nå" vises i dag inne i den innloggede appen. En delt lenke uten innlogging er en egen arkitekturbeslutning, ikke del av dette passet.
-5. `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` lagt til i dokumentasjonen (mangler i oppgavens env-var-liste, men er teknisk påkrevd for Stripe Elements på klienten).
-6. `RESEND_API_KEY` er dokumentert som ubrukt — fakturaer sendes via samme SMTP-transport (`nodemailer`) som magic-link, ikke en ny Resend-SDK-integrasjon.
-
-**Testing utført:**
-- `tsc --noEmit`: ingen typefeil.
-- Dev-server restartet rent; alle nye sider (`/kunder`, `/historikk/invoices`, `/innstillinger/firma`) og API-ruter (`/api/customers`, `/api/invoices`, `/api/payments/create-checkout`, `/api/payments/create-payment-intent`, `/api/webhooks/stripe`) kompilerte uten feil og svarte korrekt uinnlogget (401 for autentiserte ruter, riktig redirect til `/logg-inn`, 500 med tydelig feilmelding for webhooken siden `STRIPE_WEBHOOK_SECRET` ikke er satt ennå).
-- **IKKE testet**: hele betalingsflyten ende-til-ende (krever ekte Stripe-testnøkler + `stripe listen` + en faktisk gjennomført testbetaling). Jeg har ikke tilgang til en Stripe-konto. Se "Testplan" i `docs/payments-setup.md` for nøyaktige steg brukeren må kjøre selv.
-- **Ikke kjørt mot databasen**: migrasjonen er skrevet og gjennomlest, men ikke kjørt i Supabase — jeg har ikke kjørt SQL mot den levende databasen (samme praksis som `supabase/schema.sql` fra før). Må kjøres manuelt i SQL Editor før noen av de nye API-rutene faktisk kan lese/skrive data.
-
-**Gjenstående blockers for full produksjonstesting:**
-1. Sette `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` i `.env.local` (Stripe test-nøkler).
-2. Kjøre migrasjonen i Supabase SQL Editor.
-3. Kjøre `stripe listen --forward-to localhost:3000/api/webhooks/stripe` og fullføre en testbetaling med kort `4242 4242 4242 4242`.
-4. Resend sandbox-begrensningen (punkt 3 lenger opp) gjelder også fakturaer — fakturaer kan i dag kun faktisk ankomme e-post hos `tilbudsmaskinen.no@gmail.com`.
