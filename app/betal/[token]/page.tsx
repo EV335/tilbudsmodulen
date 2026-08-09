@@ -4,19 +4,17 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import type { OffentligFaktura } from '@/lib/payments'
 import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE, kanBetales } from '@/lib/fakturaStatus'
+import { formatKr, formatDato } from '@/lib/format'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import CheckoutButton from '@/components/payments/CheckoutButton'
 import PaymentIntentForm from '@/components/payments/PaymentIntentForm'
 
-function formatKr(beløp: number) {
-  return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
-}
-
-function formatDato(iso: string) {
-  return new Date(iso).toLocaleDateString('nb-NO')
-}
+// Webhooken fra Stripe lander typisk på under et sekund, men vi gir den
+// rikelig margin før vi lar kunden se betalingsknappen igjen.
+const MAKS_BEKREFTELSESFORSOK = 10
+const BEKREFTELSESINTERVALL_MS = 2000
 
 // Offentlig, uinnlogget betalingsside for sluttkunden — nås via en delt
 // lenke (e-post eller PDF), autentisert kun av det uggjettbare tokenet i
@@ -27,27 +25,49 @@ export default function OffentligBetalingsSide() {
   const searchParams = useSearchParams()
   const [faktura, setFaktura] = useState<OffentligFaktura | null>(null)
   const [feil, setFeil] = useState<string | null>(null)
+  const [bekreftelseUtlopt, setBekreftelseUtlopt] = useState(false)
 
   const betalt = searchParams.get('betalt') === '1'
   const avbrutt = searchParams.get('avbrutt') === '1'
 
   useEffect(() => {
     let aktiv = true
-    fetch(`/api/public/invoices/${params.token}`, { cache: 'no-store' })
-      .then((res) => {
+    let forsok = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    async function hent() {
+      try {
+        const res = await fetch(`/api/public/invoices/${params.token}`, { cache: 'no-store' })
         if (!res.ok) throw new Error('Fant ikke faktura')
-        return res.json()
-      })
-      .then((data) => {
-        if (aktiv) setFaktura(data)
-      })
-      .catch(() => {
+        const data: OffentligFaktura = await res.json()
+        if (!aktiv) return
+        setFaktura(data)
+
+        // Kunden er nettopp sendt hit fra Stripe, men det er webhooken som
+        // markerer fakturaen betalt — og den bruker gjerne et par sekunder.
+        // Uten denne pollingen ville kunden sett "Venter på betaling" rett
+        // etter at de faktisk betalte.
+        if (betalt && data.status !== 'paid') {
+          if (forsok < MAKS_BEKREFTELSESFORSOK) {
+            forsok++
+            timer = setTimeout(hent, BEKREFTELSESINTERVALL_MS)
+          } else {
+            // Gir vi aldri opp, står en gammel bokmerket ?betalt=1-lenke uten
+            // betalingsmulighet for alltid.
+            setBekreftelseUtlopt(true)
+          }
+        }
+      } catch {
         if (aktiv) setFeil('Fant ikke fakturaen. Sjekk at du har hele lenken.')
-      })
+      }
+    }
+
+    hent()
     return () => {
       aktiv = false
+      if (timer) clearTimeout(timer)
     }
-  }, [params.token])
+  }, [params.token, betalt])
 
   if (feil) {
     return (
@@ -66,7 +86,8 @@ export default function OffentligBetalingsSide() {
     )
   }
 
-  const kanBetale = kanBetales(faktura.status)
+  const venterPaBekreftelse = betalt && faktura.status !== 'paid' && !bekreftelseUtlopt
+  const kanBetale = kanBetales(faktura.status) && !venterPaBekreftelse
 
   return (
     <Section size="sm" spacing="roomy">
@@ -102,6 +123,12 @@ export default function OffentligBetalingsSide() {
             <Button href={faktura.pdf_url} variant="secondary" size="md">
               Last ned PDF
             </Button>
+          </Card>
+        )}
+
+        {venterPaBekreftelse && (
+          <Card padding="md">
+            <p className="text-black/70">Bekrefter betalingen hos Stripe...</p>
           </Card>
         )}
 

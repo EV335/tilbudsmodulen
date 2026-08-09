@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import jsPDF from 'jspdf'
 import { TilbudInput, TilbudResult } from '@/lib/ai'
+import { formatKr } from '@/lib/format'
 import Card from '@/components/ui/Card'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
@@ -17,10 +18,6 @@ interface ResultCardProps {
 interface Firma {
   firmanavn: string
   logo_url?: string | null
-}
-
-function formatKr(beløp: number) {
-  return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
 }
 
 async function hentLogoSomDataUrl(url: string): Promise<string | null> {

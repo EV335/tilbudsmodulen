@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { hentFaktura, klargjorPaymentIntent } from '@/lib/payments'
+import { ikkeBetalbarGrunn } from '@/lib/fakturaStatus'
 
 // Bedrift-flyt: PaymentIntent + Stripe Customer, for bruk med Stripe Elements
 // på klienten (kort eller lagret betalingsmetode).
@@ -24,8 +25,9 @@ export async function POST(req: NextRequest) {
     if (!faktura.kunde) {
       return NextResponse.json({ error: 'Fakturaen mangler kundeinformasjon.' }, { status: 400 })
     }
-    if (faktura.status === 'paid') {
-      return NextResponse.json({ error: 'Fakturaen er allerede betalt.' }, { status: 400 })
+    const ikkeBetalbar = ikkeBetalbarGrunn(faktura.status)
+    if (ikkeBetalbar) {
+      return NextResponse.json({ error: ikkeBetalbar }, { status: 400 })
     }
 
     const clientSecret = await klargjorPaymentIntent(faktura)

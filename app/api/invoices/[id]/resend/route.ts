@@ -18,6 +18,12 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     if (!faktura) {
       return NextResponse.json({ error: 'Fant ikke faktura.' }, { status: 404 })
     }
+    if (faktura.status === 'cancelled') {
+      return NextResponse.json(
+        { error: 'Fakturaen er kansellert og kan ikke sendes til kunden.' },
+        { status: 400 }
+      )
+    }
 
     const pdfUrl = await genererLagreOgSendFaktura(faktura)
     return NextResponse.json({ ok: true, pdfUrl })

@@ -5,18 +5,11 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import type { Faktura, FakturaStatus } from '@/lib/payments'
 import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE, FAKTURA_STATUS_OPTIONS } from '@/lib/fakturaStatus'
+import { formatKr, formatDato } from '@/lib/format'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
-
-function formatKr(beløp: number) {
-  return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
-}
-
-function formatDato(iso: string) {
-  return new Date(iso).toLocaleDateString('nb-NO')
-}
 
 export default function FakturaOversiktPage() {
   const { status: sessionStatus } = useSession()

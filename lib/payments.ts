@@ -216,14 +216,36 @@ export interface OpprettFakturaInput {
   dueDate?: string | null
 }
 
+// Fakturanummer er en egen, fortløpende serie PER bruker — bokføringsforskriften
+// krever nummerering uten hull per utsteder, og appen er flerbruker.
+// Se migrations/20260810_per_user_invoice_numbering.sql.
+//
+// Faller tilbake på den gamle globale sekvensen hvis migrasjonen ikke er kjørt,
+// slik at fakturering ikke stopper opp — men logger høylytt, for da har hver
+// bruker fortsatt en hullete serie.
+async function nesteFakturanummer(userId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('next_invoice_number', { p_user_id: userId })
+  if (!error) return data as string
+
+  const { data: globalt, error: globalFeil } = await supabase.rpc('next_invoice_number')
+  if (globalFeil) {
+    throw new Error(`Klarte ikke å generere fakturanummer: ${error.message}`)
+  }
+
+  console.error(
+    'VARSEL: migrations/20260810_per_user_invoice_numbering.sql er ikke kjørt ennå. ' +
+      'Bruker den globale fakturasekvensen — nummerseriene blir hullete per bruker.'
+  )
+  return globalt as string
+}
+
 export async function opprettFaktura(userId: string, input: OpprettFakturaInput): Promise<Faktura> {
-  const { data: invoiceNumber, error: seqError } = await supabase.rpc('next_invoice_number')
-  if (seqError) throw new Error(`Klarte ikke å generere fakturanummer: ${seqError.message}`)
+  const invoiceNumber = await nesteFakturanummer(userId)
 
   const { data, error } = await supabase
     .from('invoices')
     .insert({
-      invoice_number: invoiceNumber as string,
+      invoice_number: invoiceNumber,
       user_id: userId,
       tilbud_id: input.tilbudId || null,
       customer_id: input.customerId,
@@ -336,6 +358,24 @@ export async function markerFakturaBetalt(invoiceId: string): Promise<Faktura> {
 
   if (error) throw new Error(`Klarte ikke å markere faktura som betalt: ${error.message}`)
   return data as unknown as Faktura
+}
+
+// Annullerer en faktura som ikke skulle vært sendt. En BETALT faktura kan ikke
+// kanselleres — da har penger skiftet hender, og riktig behandling er en
+// kreditnota/refusjon, ikke å omskrive historikken. `.neq('status', 'paid')`
+// gjør den regelen til en databasebetingelse, ikke bare en sjekk i ruten.
+export async function kansellerFaktura(userId: string, id: string): Promise<Faktura | null> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .neq('status', 'paid')
+    .select('*, kunde:customers(*)')
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å kansellere faktura: ${error.message}`)
+  return data as unknown as Faktura | null
 }
 
 export async function markerFakturaFeilet(invoiceId: string): Promise<void> {

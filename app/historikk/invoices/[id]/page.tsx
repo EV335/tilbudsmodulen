@@ -8,12 +8,18 @@ import Section from '@/components/ui/Section'
 import Button from '@/components/ui/Button'
 import InvoiceView from '@/components/invoice/InvoiceView'
 
+// Webhooken lander typisk på under et sekund; vi gir den rikelig margin før
+// betalingsknappen slippes fram igjen.
+const MAKS_BEKREFTELSESFORSOK = 10
+const BEKREFTELSESINTERVALL_MS = 2000
+
 export default function FakturaDetaljPage() {
   const { status: sessionStatus } = useSession()
   const params = useParams<{ id: string }>()
   const searchParams = useSearchParams()
   const [faktura, setFaktura] = useState<Faktura | null>(null)
   const [feil, setFeil] = useState<string | null>(null)
+  const [bekreftelseUtlopt, setBekreftelseUtlopt] = useState(false)
 
   const betalt = searchParams.get('betalt') === '1'
   const avbrutt = searchParams.get('avbrutt') === '1'
@@ -22,21 +28,40 @@ export default function FakturaDetaljPage() {
     if (sessionStatus !== 'authenticated') return
 
     let aktiv = true
-    fetch(`/api/invoices/${params.id}`)
-      .then((res) => {
+    let forsok = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    async function hent() {
+      try {
+        const res = await fetch(`/api/invoices/${params.id}`, { cache: 'no-store' })
         if (!res.ok) throw new Error('Fant ikke faktura')
-        return res.json()
-      })
-      .then((data) => {
-        if (aktiv) setFaktura(data)
-      })
-      .catch(() => {
+        const data: Faktura = await res.json()
+        if (!aktiv) return
+        setFaktura(data)
+
+        // Betalingen er nettopp gjennomført, men det er Stripe-webhooken som
+        // markerer fakturaen betalt. Poller til den har landet, ellers ville
+        // siden vist "Venter på betaling" med betalingsknappen intakt rett
+        // etter at kunden betalte.
+        if (betalt && data.status !== 'paid') {
+          if (forsok < MAKS_BEKREFTELSESFORSOK) {
+            forsok++
+            timer = setTimeout(hent, BEKREFTELSESINTERVALL_MS)
+          } else {
+            setBekreftelseUtlopt(true)
+          }
+        }
+      } catch {
         if (aktiv) setFeil('Fant ikke fakturaen, eller den tilhører ikke deg.')
-      })
+      }
+    }
+
+    hent()
     return () => {
       aktiv = false
+      if (timer) clearTimeout(timer)
     }
-  }, [sessionStatus, params.id])
+  }, [sessionStatus, params.id, betalt])
 
   if (sessionStatus === 'loading') {
     return (
@@ -89,7 +114,10 @@ export default function FakturaDetaljPage() {
         )}
         {avbrutt && <p className="text-red-400 font-medium">Betaling avbrutt. Ingenting er trukket.</p>}
       </div>
-      <InvoiceView faktura={faktura} />
+      <InvoiceView
+        faktura={faktura}
+        ventPaBekreftelse={betalt && faktura.status !== 'paid' && !bekreftelseUtlopt}
+      />
     </Section>
   )
 }

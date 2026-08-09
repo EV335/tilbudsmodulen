@@ -5,23 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { LagretTilbud } from '@/lib/historikk'
+import { formatKr, formatDatoTid } from '@/lib/format'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-
-function formatKr(beløp: number) {
-  return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
-}
-
-function formatDato(iso: string) {
-  return new Date(iso).toLocaleString('nb-NO', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 export default function HistorikkPage() {
   const router = useRouter()
@@ -124,7 +111,7 @@ export default function HistorikkPage() {
                 {tilbud.input.kundenavn ? ` · ${tilbud.input.kundenavn}` : ''}
               </div>
               <div className="text-sm text-black/50">
-                {tilbud.input.romstorrelseM2} m² · {formatDato(tilbud.opprettet)}
+                {tilbud.input.romstorrelseM2} m² · {formatDatoTid(tilbud.opprettet)}
               </div>
             </div>
             <div className="flex items-center gap-4">

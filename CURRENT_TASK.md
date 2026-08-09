@@ -580,6 +580,93 @@ kjøres side om side med dev-serveren:
 betalingsknapp), `/historikk/invoices`, fakturadetalj og `/result` — ingen
 konsollfeil noe sted.
 
+### 16. Andre gjennomgang — funn første runde ikke fanget — 2026-08-09
+Branch `fix/bug-sweep-cleanup` (pushet). Punkt 15 var én lesning av koden;
+dette er det en runde til fant.
+
+**⚠️ Alvorligst: betalingsskjemaet kom tilbake rett etter at kunden hadde
+betalt.** Min egen fiks i punkt 15 (redirect til `?betalt=1` ved vellykket
+Elements-betaling) gjorde dette **mer sannsynlig**, ikke mindre: siden lastet,
+hentet fakturaen, og webhooken hadde som regel ikke rukket å markere den
+betalt ennå — så status var fortsatt `pending`, `kanBetale` ble sann, og
+kunden fikk «Betaling gjennomført» **sammen med et fullt betalingsskjema**.
+Nøyaktig samme dobbeltbetalings-felle som punkt 10 beskrev for den offentlige
+siden, bare med en annen årsak. Gjelder også Checkout, som returnerer til
+`/historikk/invoices/[id]?betalt=1`.
+**Fiks:** begge sidene skjuler nå betalingsseksjonen så lenge `?betalt=1` står
+i URL-en og status ikke er `paid`, viser «Bekrefter betalingen hos Stripe...»,
+og poller hvert 2. sekund i inntil 20 sekunder. Gir polleren opp, slippes
+knappen fram igjen — ellers ville en bokmerket `?betalt=1`-lenke låst en
+ubetalt faktura for alltid.
+
+**Fakturanummer var én global sekvens for hele installasjonen.**
+`next_invoice_number()` brukte `public.invoice_seq`, mens appen er flerbruker
+(`invoices`, `firma`, `customers` er alle scopet på `user_id`). To håndverkere
+som fakturerer om hverandre ville fått hver sin hullete serie — A: INV-000001,
+INV-000003; B: INV-000002. Bokføringsforskriften krever fortløpende
+nummerering per utsteder. Med bare én bruker i basen har dette aldri vist seg;
+det slår først inn i det bruker nummer to lager sin første faktura — altså
+nøyaktig ved «klart for kolleger».
+**Fiks:** ny migrasjon `20260810_per_user_invoice_numbering.sql` — teller per
+bruker, ny `next_invoice_number(uuid)`, og unikhet flyttet fra global
+`invoice_number` til `(user_id, invoice_number)` (ellers ville både A og B sin
+INV-000001 kollidert). Telleren settes til høyeste eksisterende nummer per
+bruker + 1, ikke `count(*)+1`, som ville truffet et nummer brukeren allerede
+har hvis serien hadde hull.
+**Koden har en fallback:** kjøres migrasjonen ikke, faller
+`nesteFakturanummer()` tilbake på den gamle sekvensen og logger et varsel, i
+stedet for at fakturering stopper opp. Verifisert mot live-basen at den nye
+signaturen gir `PGRST202` i dag, altså at fallbacken faktisk trigges.
+
+**En kansellert faktura kunne fortsatt betales.** Statusen `cancelled` fantes i
+databasen og i statusfilteret, men **ingenting satte den noen gang** — en
+blindvei i UI-et. Verre: de fire betalingsrutene sjekket bare `status ===
+'paid'`, så hadde noe først satt `cancelled`, kunne kunden betalt via en gammel
+lenke likevel.
+**Fiks:** `PATCH /api/invoices/[id]` med kansellering (en BETALT faktura kan
+ikke kanselleres — `.neq('status','paid')` gjør det til en databasebetingelse,
+ikke bare en sjekk i ruten), knapp i `InvoiceView`, og ny delt
+`ikkeBetalbarGrunn()` som alle fire betalingsrutene bruker.
+«Send på nytt» blokkerer også kansellerte fakturaer.
+**Verifisert live:** kansellerte INV-000005 → begge offentlige betalingsruter
+svarte `400 "Fakturaen er kansellert og kan ikke betales."` → kundens side
+skjulte betalingen → forsøk på å kansellere en betalt faktura ga `400` →
+`{"status":"paid"}` i payloaden ga `400`. Satt tilbake til `pending` etterpå.
+
+**`formatKr`/`formatDato` var kopiert ut i sju filer.** En retting måtte gjøres
+sju steder for å slå gjennom. Samlet i `lib/format.ts` — og i samme slengen
+rettet at beløp ble vist med `Math.round()`: en faktura på 1500,50 sto som
+«kr 1 500,-» i både UI og PDF, mens Stripe trakk 1500,50.
+
+**Mindre, men reelle:**
+- `hentLogo()` hadde ingen timeout, og kjører inne i Stripe-webhooken. Henger
+  Storage, henger webhook-svaret; Stripe gir opp og prøver igjen, og da
+  stopper idempotency-sjekken andre forsøk — fakturaen blir stående betalt
+  **uten** PDF og e-post. Nå 5 sekunders `AbortController`.
+- `hentFirmaForBruker()` slukte databasefeil helt. Konsekvensen var stille:
+  faktura generert med avsender «TilbudsMaskinen» i stedet for firmanavnet,
+  uten spor av hvorfor.
+- Kommentaren i `sendFakturaEpost` forklarte fortsatt feilhåndteringen med
+  Resend sandbox-begrensningen, som ikke lenger gjelder (punkt 14). Byttet til
+  den faktiske grunnen: kaster vi videre her, svarer webhooken 500, Stripe
+  prøver igjen, og idempotency-sjekken stopper forsøk to uansett.
+
+**Verifisering:** `tsc --noEmit` 0 feil, fullt `next build` rent (24 sider).
+Live-testet kansellering, betalingsblokkering, DTO-en og formateringen.
+`env.local` (uten punktum) er slettet — identisk nøkkelsett med `.env.local`,
+og Next.js leste den aldri.
+
+**Bevisst IKKE gjort — krever din avgjørelse:**
+- **MVA/moms mangler helt.** Fakturaene har ingen mva-linje og ingen
+  mva-sats. Er du mva-registrert, er en faktura uten mva-spesifikasjon ikke
+  gyldig. Å legge det til er ikke en bugfiks: det må avgjøres om prisene
+  kalkulatoren gir er inkl. eller eks. mva, og det endrer hele prismodellen.
+- **Kunder kan ikke redigeres eller slettes.** `/kunder` er bare opprett +
+  list. Feil e-post på en kunde kan i dag ikke rettes.
+- **Storage-bucketene er offentlige.** Faktura-PDF-er ligger på gjettbare
+  (men uuid-baserte) URL-er. Dokumentert som et bevisst valg i migrasjonen —
+  for ekte kunder bør det byttes til privat bucket med signerte URL-er.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -623,12 +710,14 @@ være?) — ikke besvart ennå.
 6. **Sett `APP_URL` før deploy** — ellers peker alle betalingslenker i
    PDF/e-post til `localhost:3000` (se punkt 13). Står nå dokumentert både i
    `.env.local.example` og `docs/payments-setup.md`.
-7. **Slett `env.local`** (uten punktum) — den ligger fortsatt i repo-roten med
-   14 variabler i klartekst. Nøklene i den er **utdaterte** (alle ble rotert i
-   punkt 9), og filen er gitignorert, så den er ikke lenger en akutt lekkasje —
-   men den er en forvirrende duplikat av `.env.local` og bør vekk. Jeg lot den
-   ligge fordi det er en fil du opprettet manuelt:
-   `rm env.local`
+7. ~~Slett `env.local`~~ — **gjort i punkt 16.** Nøkkelsettet var identisk med
+   `.env.local`, nøklene var utdaterte etter rotasjonen, og Next.js leste
+   aldri filen.
+8. **Kjør `migrations/20260810_per_user_invoice_numbering.sql`** i Supabase SQL
+   Editor. Til den er kjørt bruker appen den gamle globale fakturasekvensen og
+   logger et varsel ved hver ny faktura — den stopper ikke opp, men
+   nummerseriene blir hullete så snart bruker nummer to kommer til (se
+   punkt 16).
 4. ~~Migrasjonen `20260808_...sql` er ikke idempotent~~ — **fikset 2026-08-09**
    (`1649204`), se punkt 12.
 5. ~~Rydde bort patch-scriptene~~ — gjort, se `d8bf9df`.

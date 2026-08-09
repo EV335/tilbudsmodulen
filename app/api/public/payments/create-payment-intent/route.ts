@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hentFakturaByPublicToken, klargjorPaymentIntent } from '@/lib/payments'
+import { ikkeBetalbarGrunn } from '@/lib/fakturaStatus'
 
 // Public motstykke til /api/payments/create-payment-intent — autentiserer
 // via faktura.public_token i stedet for en innlogget sesjon, slik at
@@ -18,8 +19,9 @@ export async function POST(req: NextRequest) {
     if (!faktura.kunde) {
       return NextResponse.json({ error: 'Fakturaen mangler kundeinformasjon.' }, { status: 400 })
     }
-    if (faktura.status === 'paid') {
-      return NextResponse.json({ error: 'Fakturaen er allerede betalt.' }, { status: 400 })
+    const ikkeBetalbar = ikkeBetalbarGrunn(faktura.status)
+    if (ikkeBetalbar) {
+      return NextResponse.json({ error: ikkeBetalbar }, { status: 400 })
     }
 
     const clientSecret = await klargjorPaymentIntent(faktura)

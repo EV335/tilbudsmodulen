@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { hentFaktura, settFakturaCheckoutSession } from '@/lib/payments'
+import { ikkeBetalbarGrunn } from '@/lib/fakturaStatus'
 
 function appUrl(): string {
   return process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000'
@@ -26,8 +27,9 @@ export async function POST(req: NextRequest) {
     if (!faktura) {
       return NextResponse.json({ error: 'Fant ikke faktura.' }, { status: 404 })
     }
-    if (faktura.status === 'paid') {
-      return NextResponse.json({ error: 'Fakturaen er allerede betalt.' }, { status: 400 })
+    const ikkeBetalbar = ikkeBetalbarGrunn(faktura.status)
+    if (ikkeBetalbar) {
+      return NextResponse.json({ error: ikkeBetalbar }, { status: 400 })
     }
 
     const stripe = getStripe()
