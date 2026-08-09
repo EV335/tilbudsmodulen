@@ -12,7 +12,10 @@ if (publishableKey) {
 }
 
 interface PaymentIntentFormProps {
-  invoiceId: string
+  // Enten invoiceId (innlogget håndverker-visning) eller token
+  // (offentlig /betal/[token]-side for sluttkunden) — aldri begge.
+  invoiceId?: string
+  token?: string
   onSuccess?: () => void
 }
 
@@ -62,7 +65,7 @@ function BetalingsSkjema({ onSuccess }: { onSuccess?: () => void }) {
 // Bedrift-flyt: Stripe Elements innebygd i appen, for kortbetaling (og
 // lagring av betalingsmetode for fremtidig bruk — se setup_future_usage i
 // app/api/payments/create-payment-intent/route.ts).
-export default function PaymentIntentForm({ invoiceId, onSuccess }: PaymentIntentFormProps) {
+export default function PaymentIntentForm({ invoiceId, token, onSuccess }: PaymentIntentFormProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [feil, setFeil] = useState<string | null>(null)
   const startetRef = useRef(false)
@@ -74,10 +77,11 @@ export default function PaymentIntentForm({ invoiceId, onSuccess }: PaymentInten
     if (startetRef.current) return
     startetRef.current = true
 
-    fetch('/api/payments/create-payment-intent', {
+    const url = token ? '/api/public/payments/create-payment-intent' : '/api/payments/create-payment-intent'
+    fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invoiceId }),
+      body: JSON.stringify(token ? { token } : { invoiceId }),
     })
       .then(async (res) => {
         const data = await res.json()
@@ -87,7 +91,7 @@ export default function PaymentIntentForm({ invoiceId, onSuccess }: PaymentInten
       .catch((err) => {
         setFeil(err instanceof Error ? err.message : 'Noe gikk galt.')
       })
-  }, [invoiceId])
+  }, [invoiceId, token])
 
   if (!stripePromise) {
     return (

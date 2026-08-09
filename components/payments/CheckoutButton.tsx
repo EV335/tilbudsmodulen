@@ -4,13 +4,16 @@ import { useState } from 'react'
 import Button from '@/components/ui/Button'
 
 interface CheckoutButtonProps {
-  invoiceId: string
+  // Enten invoiceId (innlogget håndverker-visning) eller token
+  // (offentlig /betal/[token]-side for sluttkunden) — aldri begge.
+  invoiceId?: string
+  token?: string
 }
 
 // Privat-flyt: redirecter til Stripes hostede Checkout-side. Enklest mulig
 // betalingsvei — vi trenger ikke Stripe Elements eller en publishable key
 // for denne, siden Stripe selv hoster betalingsskjemaet.
-export default function CheckoutButton({ invoiceId }: CheckoutButtonProps) {
+export default function CheckoutButton({ invoiceId, token }: CheckoutButtonProps) {
   const [status, setStatus] = useState<'idle' | 'starter' | 'feil'>('idle')
   const [feil, setFeil] = useState<string | null>(null)
 
@@ -18,10 +21,11 @@ export default function CheckoutButton({ invoiceId }: CheckoutButtonProps) {
     setStatus('starter')
     setFeil(null)
     try {
-      const res = await fetch('/api/payments/create-checkout', {
+      const url = token ? '/api/public/payments/create-checkout' : '/api/payments/create-checkout'
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId }),
+        body: JSON.stringify(token ? { token } : { invoiceId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Klarte ikke å starte betaling.')

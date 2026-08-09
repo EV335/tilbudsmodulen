@@ -35,6 +35,7 @@ export interface Faktura {
   due_date: string | null
   paid_at: string | null
   created_at: string
+  public_token: string
   kunde?: Kunde
 }
 
@@ -143,6 +144,20 @@ export async function hentFakturaById(id: string): Promise<Faktura | null> {
     .from('invoices')
     .select('*, kunde:customers(*)')
     .eq('id', id)
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å hente faktura: ${error.message}`)
+  return data as unknown as Faktura | null
+}
+
+// Uscopet oppslag via public_token — brukes av de token-baserte /api/public/*-
+// rutene slik at en sluttkunde uten TilbudsMaskinen-konto kan se og betale
+// egen faktura. Tokenet (uuid, se migrasjonen) ER autentiseringen her.
+export async function hentFakturaByPublicToken(token: string): Promise<Faktura | null> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, kunde:customers(*)')
+    .eq('public_token', token)
     .maybeSingle()
 
   if (error) throw new Error(`Klarte ikke å hente faktura: ${error.message}`)

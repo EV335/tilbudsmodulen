@@ -23,6 +23,14 @@ interface InvoiceViewProps {
 export default function InvoiceView({ faktura: initial }: InvoiceViewProps) {
   const [faktura, setFaktura] = useState(initial)
   const [resendStatus, setResendStatus] = useState<'idle' | 'sender' | 'sendt' | 'feil'>('idle')
+  const [lenkeKopiert, setLenkeKopiert] = useState(false)
+
+  function kopierBetalingslenke() {
+    const lenke = `${window.location.origin}/betal/${faktura.public_token}`
+    navigator.clipboard.writeText(lenke)
+    setLenkeKopiert(true)
+    setTimeout(() => setLenkeKopiert(false), 2000)
+  }
 
   async function handleGenererEllerResend() {
     setResendStatus('sender')
@@ -79,7 +87,12 @@ export default function InvoiceView({ faktura: initial }: InvoiceViewProps) {
 
       {kanBetale && (
         <Card>
-          <div className="text-sm font-bold text-black/50 uppercase tracking-wide mb-4">Betaling</div>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <div className="text-sm font-bold text-black/50 uppercase tracking-wide">Betaling</div>
+            <Button variant="secondary" size="md" onClick={kopierBetalingslenke}>
+              {lenkeKopiert ? 'Lenke kopiert!' : 'Kopier betalingslenke til kunden'}
+            </Button>
+          </div>
           {faktura.kunde?.type === 'bedrift' ? (
             <PaymentIntentForm invoiceId={faktura.id} />
           ) : (
