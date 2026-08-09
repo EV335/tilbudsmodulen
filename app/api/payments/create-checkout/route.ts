@@ -1,32 +1,63 @@
-﻿import Stripe from 'stripe';
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-08-01' });
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth'
+import { getStripe } from '@/lib/stripe'
+import { hentFaktura, settFakturaCheckoutSession } from '@/lib/payments'
 
-export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const body = await req.json();
-  const { tilbudId, amount, currency = 'nok' } = body;
-  if (!tilbudId || !amount) return NextResponse.json({ error: 'Missing params' }, { status: 400 });
-
-  const sessionObj = await stripe.checkout.sessions.create({
-    payment_method_types: ['card'],
-    mode: 'payment',
-    line_items: [{
-      price_data: {
-        currency: 'nok',
-        product_data: { name: `Tilbud ${tilbudId}` },
-        unit_amount: amount
-      },
-      quantity: 1
-    }],
-    success_url: `${process.env.APP_URL}/betaling/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.APP_URL}/betaling/cancel`,
-    metadata: { tilbudId, userId: session.user.id }
-  });
-
-  return NextResponse.json({ url: sessionObj.url });
+function appUrl(): string {
+  return process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000'
 }
 
+// Privat-flyt: Stripe-hostet Checkout. Brukes for enkle engangsbetalinger der
+// vi ikke trenger å lagre et betalingsmiddel eller en Stripe Customer.
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    const body = (await req.json()) as { invoiceId?: string }
+    if (!body.invoiceId) {
+      return NextResponse.json({ error: 'Mangler invoiceId.' }, { status: 400 })
+    }
+
+    const faktura = await hentFaktura(session.user.id, body.invoiceId)
+    if (!faktura) {
+      return NextResponse.json({ error: 'Fant ikke faktura.' }, { status: 404 })
+    }
+    if (faktura.status === 'paid') {
+      return NextResponse.json({ error: 'Fakturaen er allerede betalt.' }, { status: 400 })
+    }
+
+    const stripe = getStripe()
+    const base = appUrl()
+
+    const checkoutSession = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: faktura.currency,
+            product_data: { name: `Faktura ${faktura.invoice_number}` },
+            unit_amount: Math.round(faktura.amount * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      customer_email: faktura.kunde?.epost || undefined,
+      metadata: { invoiceId: faktura.id },
+      success_url: `${base}/historikk/invoices/${faktura.id}?betalt=1`,
+      cancel_url: `${base}/historikk/invoices/${faktura.id}?avbrutt=1`,
+    })
+
+    await settFakturaCheckoutSession(faktura.id, checkoutSession.id)
+
+    return NextResponse.json({ url: checkoutSession.url })
+  } catch (err) {
+    console.error('Feil i /api/payments/create-checkout:', err)
+    const message = err instanceof Error ? err.message : 'Klarte ikke å starte betaling.'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
