@@ -1,38 +1,302 @@
-﻿import { createClient } from '@supabase/supabase-js';
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
+import { supabase } from '@/lib/supabase'
+import { getStripe } from '@/lib/stripe'
 
-export async function recordPayment(payment: {
-  tilbud_id?: string;
-  user_id?: string;
-  stripe_payment_intent?: string;
-  stripe_checkout_session?: string;
-  amount: number;
-  currency?: string;
-  status: string;
-  stripe_event_id?: string;
-}) {
-  // Idempotency: sjekk stripe_event_id eller stripe_payment_intent/checkout
-  if (payment.stripe_event_id) {
-    const { data } = await supabase.from('payments').select('*').eq('stripe_event_id', payment.stripe_event_id).limit(1);
-    if (data && data.length) return data[0];
+export type KundeType = 'privat' | 'bedrift'
+
+export interface Kunde {
+  id: string
+  user_id: string
+  type: KundeType
+  navn: string
+  epost: string | null
+  telefon: string | null
+  adresse: string | null
+  orgnr: string | null
+  stripe_customer_id: string | null
+  created_at: string
+}
+
+export type FakturaStatus = 'draft' | 'pending' | 'paid' | 'failed' | 'cancelled'
+export type BetalingsType = 'checkout' | 'payment_intent'
+
+export interface Faktura {
+  id: string
+  invoice_number: string
+  user_id: string
+  tilbud_id: string | null
+  customer_id: string
+  amount: number
+  currency: string
+  status: FakturaStatus
+  payment_type: BetalingsType | null
+  pdf_url: string | null
+  stripe_checkout_session_id: string | null
+  stripe_payment_intent_id: string | null
+  due_date: string | null
+  paid_at: string | null
+  created_at: string
+  kunde?: Kunde
+}
+
+// ---------------------------------------------------------------------------
+// Kunderegister (customers)
+// ---------------------------------------------------------------------------
+
+export async function hentKunder(userId: string): Promise<Kunde[]> {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(`Klarte ikke å hente kunder: ${error.message}`)
+  return data as Kunde[]
+}
+
+export async function hentKunde(userId: string, id: string): Promise<Kunde | null> {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å hente kunde: ${error.message}`)
+  return data as Kunde | null
+}
+
+export interface OpprettKundeInput {
+  type: KundeType
+  navn: string
+  epost?: string | null
+  telefon?: string | null
+  adresse?: string | null
+  orgnr?: string | null
+}
+
+export async function opprettKunde(userId: string, input: OpprettKundeInput): Promise<Kunde> {
+  const { data, error } = await supabase
+    .from('customers')
+    .insert({
+      user_id: userId,
+      type: input.type,
+      navn: input.navn,
+      epost: input.epost || null,
+      telefon: input.telefon || null,
+      adresse: input.adresse || null,
+      orgnr: input.type === 'bedrift' ? input.orgnr || null : null,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw new Error(`Klarte ikke å opprette kunde: ${error.message}`)
+  return data as Kunde
+}
+
+// Sikrer at kunden har en Stripe Customer-id. Oppretter i Stripe + lagrer
+// på raden hvis den mangler. Brukes av Bedrift-flyten (PaymentIntent).
+export async function hentEllerOpprettStripeCustomerId(kunde: Kunde): Promise<string> {
+  if (kunde.stripe_customer_id) return kunde.stripe_customer_id
+
+  const stripe = getStripe()
+  const stripeCustomer = await stripe.customers.create({
+    name: kunde.navn,
+    email: kunde.epost || undefined,
+    phone: kunde.telefon || undefined,
+    metadata: { kundeId: kunde.id, userId: kunde.user_id },
+  })
+
+  const { error } = await supabase
+    .from('customers')
+    .update({ stripe_customer_id: stripeCustomer.id, updated_at: new Date().toISOString() })
+    .eq('id', kunde.id)
+
+  if (error) throw new Error(`Klarte ikke å lagre Stripe-kunde-id: ${error.message}`)
+
+  return stripeCustomer.id
+}
+
+// ---------------------------------------------------------------------------
+// Fakturaer (invoices)
+// ---------------------------------------------------------------------------
+
+export async function hentFakturaer(userId: string, status?: FakturaStatus): Promise<Faktura[]> {
+  let query = supabase
+    .from('invoices')
+    .select('*, kunde:customers(*)')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (status) {
+    query = query.eq('status', status)
   }
-  const { data, error } = await supabase.from('payments').insert(payment).select().single();
-  if (error) throw error;
-  return data;
+
+  const { data, error } = await query
+  if (error) throw new Error(`Klarte ikke å hente fakturaer: ${error.message}`)
+  return data as unknown as Faktura[]
 }
 
-export async function createInvoiceRow(invoice: {
-  invoice_number: string;
-  tilbud_id?: string;
-  customer_id?: string;
-  amount: number;
-  currency?: string;
-  status?: string;
-  pdf_url?: string;
-  due_date?: string;
-}) {
-  const { data, error } = await supabase.from('invoices').insert(invoice).select().single();
-  if (error) throw error;
-  return data;
+// Uscopet oppslag — brukes KUN fra webhook-handleren, som autentiserer via
+// Stripe-signatur (STRIPE_WEBHOOK_SECRET) i stedet for en innlogget sesjon.
+export async function hentFakturaById(id: string): Promise<Faktura | null> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, kunde:customers(*)')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å hente faktura: ${error.message}`)
+  return data as unknown as Faktura | null
 }
 
+export async function hentFaktura(userId: string, id: string): Promise<Faktura | null> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, kunde:customers(*)')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å hente faktura: ${error.message}`)
+  return data as unknown as Faktura | null
+}
+
+export interface OpprettFakturaInput {
+  customerId: string
+  amount: number
+  tilbudId?: string | null
+  dueDate?: string | null
+}
+
+export async function opprettFaktura(userId: string, input: OpprettFakturaInput): Promise<Faktura> {
+  const { data: invoiceNumber, error: seqError } = await supabase.rpc('next_invoice_number')
+  if (seqError) throw new Error(`Klarte ikke å generere fakturanummer: ${seqError.message}`)
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .insert({
+      invoice_number: invoiceNumber as string,
+      user_id: userId,
+      tilbud_id: input.tilbudId || null,
+      customer_id: input.customerId,
+      amount: input.amount,
+      currency: 'nok',
+      status: 'draft',
+      due_date: input.dueDate || null,
+    })
+    .select('*, kunde:customers(*)')
+    .single()
+
+  if (error) throw new Error(`Klarte ikke å opprette faktura: ${error.message}`)
+  return data as unknown as Faktura
+}
+
+export async function settFakturaCheckoutSession(invoiceId: string, sessionId: string): Promise<void> {
+  const { error } = await supabase
+    .from('invoices')
+    .update({
+      stripe_checkout_session_id: sessionId,
+      payment_type: 'checkout',
+      status: 'pending',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', invoiceId)
+
+  if (error) throw new Error(`Klarte ikke å oppdatere faktura med checkout-session: ${error.message}`)
+}
+
+export async function settFakturaPaymentIntent(invoiceId: string, paymentIntentId: string): Promise<void> {
+  const { error } = await supabase
+    .from('invoices')
+    .update({
+      stripe_payment_intent_id: paymentIntentId,
+      payment_type: 'payment_intent',
+      status: 'pending',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', invoiceId)
+
+  if (error) throw new Error(`Klarte ikke å oppdatere faktura med payment intent: ${error.message}`)
+}
+
+export async function markerFakturaBetalt(invoiceId: string): Promise<Faktura> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .update({ status: 'paid', paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', invoiceId)
+    .select('*, kunde:customers(*)')
+    .single()
+
+  if (error) throw new Error(`Klarte ikke å markere faktura som betalt: ${error.message}`)
+  return data as unknown as Faktura
+}
+
+export async function markerFakturaFeilet(invoiceId: string): Promise<void> {
+  const { error } = await supabase
+    .from('invoices')
+    .update({ status: 'failed', updated_at: new Date().toISOString() })
+    .eq('id', invoiceId)
+
+  if (error) throw new Error(`Klarte ikke å markere faktura som feilet: ${error.message}`)
+}
+
+export async function settFakturaPdfUrl(invoiceId: string, pdfUrl: string): Promise<void> {
+  const { error } = await supabase
+    .from('invoices')
+    .update({ pdf_url: pdfUrl, updated_at: new Date().toISOString() })
+    .eq('id', invoiceId)
+
+  if (error) throw new Error(`Klarte ikke å lagre faktura-PDF-url: ${error.message}`)
+}
+
+// ---------------------------------------------------------------------------
+// Betalinger (payments) — idempotency-grunnlag for webhook
+// ---------------------------------------------------------------------------
+
+// stripe_event_id har en unique-constraint i databasen. Denne sjekken +
+// constrainten sammen gjør webhook-behandlingen trygg mot Stripes
+// at-least-once levering (samme event kan i prinsippet komme flere ganger).
+export async function harBehandletStripeEvent(stripeEventId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('stripe_event_id', stripeEventId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å sjekke idempotency: ${error.message}`)
+  return !!data
+}
+
+export interface LagreBetalingInput {
+  invoiceId: string
+  userId: string
+  amount: number
+  currency: string
+  status: 'pending' | 'succeeded' | 'failed'
+  paymentMethodType: BetalingsType
+  stripeEventId: string
+  stripePaymentIntentId?: string | null
+  stripeCheckoutSessionId?: string | null
+  rawEvent?: unknown
+}
+
+export async function lagreBetaling(input: LagreBetalingInput): Promise<void> {
+  const { error } = await supabase.from('payments').insert({
+    invoice_id: input.invoiceId,
+    user_id: input.userId,
+    amount: input.amount,
+    currency: input.currency,
+    status: input.status,
+    payment_method_type: input.paymentMethodType,
+    stripe_event_id: input.stripeEventId,
+    stripe_payment_intent_id: input.stripePaymentIntentId || null,
+    stripe_checkout_session_id: input.stripeCheckoutSessionId || null,
+    raw_event: input.rawEvent ?? null,
+  })
+
+  // 23505 = unique_violation. Samme event forsøkt lagret to ganger —
+  // dette er forventet ved Stripes at-least-once levering, ikke en feil.
+  if (error && (error as { code?: string }).code !== '23505') {
+    throw new Error(`Klarte ikke å lagre betaling: ${error.message}`)
+  }
+}

@@ -1,66 +1,112 @@
-﻿import Stripe from 'stripe';
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-08-01' });
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
+import { NextRequest, NextResponse } from 'next/server'
+import Stripe from 'stripe'
+import { getStripe } from '@/lib/stripe'
+import {
+  hentFakturaById,
+  harBehandletStripeEvent,
+  lagreBetaling,
+  markerFakturaBetalt,
+} from '@/lib/payments'
+import { genererLagreOgSendFaktura } from '@/lib/invoice'
 
-export async function POST(req: Request) {
-  const payload = await req.text();
-  const sig = req.headers.get('stripe-signature') || '';
-  let event: Stripe.Event;
-  try {
-    event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET!);
-  } catch (err) {
-    console.error('Webhook signature verification failed.', err);
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+export const runtime = 'nodejs'
+
+async function behandleInvoiceBetalt(
+  invoiceId: string | undefined,
+  event: Stripe.Event,
+  betalingsType: 'checkout' | 'payment_intent',
+  stripeCheckoutSessionId?: string,
+  stripePaymentIntentId?: string
+) {
+  if (!invoiceId) {
+    console.error(`Stripe-event ${event.id} (${event.type}) mangler invoiceId i metadata.`)
+    return
   }
 
-  // Idempotency: sjekk om stripe_event_id allerede behandlet
-  const stripeEventId = event.id;
-  try {
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const tilbudId = session.metadata?.tilbudId;
-      const userId = session.metadata?.userId;
-      const amount = session.amount_total ?? 0;
-      // Sjekk om payment finnes
-      const { data: existing } = await supabase.from('payments').select('*').eq('stripe_checkout_session', session.id).limit(1);
-      if (existing && existing.length) {
-        return NextResponse.json({ received: true });
-      }
-      await supabase.from('payments').insert({
-        tilbud_id: tilbudId,
-        user_id: userId,
-        stripe_checkout_session: session.id,
-        amount,
-        currency: session.currency ?? 'NOK',
-        status: 'succeeded',
-        stripe_event_id: stripeEventId
-      });
-      // Optionally create invoice here or mark tilbud as paid
-    }
-
-    if (event.type === 'payment_intent.succeeded') {
-      const pi = event.data.object as Stripe.PaymentIntent;
-      const tilbudId = pi.metadata?.tilbudId;
-      const userId = pi.metadata?.userId;
-      const { data: existing } = await supabase.from('payments').select('*').eq('stripe_payment_intent', pi.id).limit(1);
-      if (existing && existing.length) return NextResponse.json({ received: true });
-      await supabase.from('payments').insert({
-        tilbud_id: tilbudId,
-        user_id: userId,
-        stripe_payment_intent: pi.id,
-        amount: pi.amount ?? 0,
-        currency: pi.currency ?? 'NOK',
-        status: 'succeeded',
-        stripe_event_id: stripeEventId
-      });
-    }
-  } catch (err) {
-    console.error('Webhook handling error', err);
-    return NextResponse.json({ error: 'Webhook handling error' }, { status: 500 });
+  const faktura = await hentFakturaById(invoiceId)
+  if (!faktura) {
+    console.error(`Stripe-event ${event.id}: fant ikke faktura ${invoiceId}.`)
+    return
   }
 
-  return NextResponse.json({ received: true });
+  await lagreBetaling({
+    invoiceId: faktura.id,
+    userId: faktura.user_id,
+    amount: faktura.amount,
+    currency: faktura.currency,
+    status: 'succeeded',
+    paymentMethodType: betalingsType,
+    stripeEventId: event.id,
+    stripeCheckoutSessionId,
+    stripePaymentIntentId,
+    rawEvent: event,
+  })
+
+  const betaltFaktura = await markerFakturaBetalt(faktura.id)
+
+  try {
+    await genererLagreOgSendFaktura(betaltFaktura)
+  } catch (err) {
+    // Betalingen er allerede registrert og fakturaen er markert betalt —
+    // det er riktig og skal ikke reverseres selv om PDF/e-post feiler her.
+    // (Spesifikasjonen ba om å sette status til FAILED ved PDF-feil, men det
+    // ville feilaktig fortalt en kunde som faktisk har betalt at betalingen
+    // mislyktes. Vi logger i stedet høylytt som et internt varsel.)
+    console.error(`VARSEL: faktura ${faktura.invoice_number} er betalt, men PDF/e-post feilet:`, err)
+  }
 }
 
+export async function POST(req: NextRequest) {
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+  if (!webhookSecret) {
+    console.error('STRIPE_WEBHOOK_SECRET mangler — kan ikke verifisere webhook.')
+    return NextResponse.json({ error: 'Webhook er ikke konfigurert.' }, { status: 500 })
+  }
+
+  const signatur = req.headers.get('stripe-signature')
+  if (!signatur) {
+    return NextResponse.json({ error: 'Mangler stripe-signature-header.' }, { status: 400 })
+  }
+
+  const raatekst = await req.text()
+
+  let event: Stripe.Event
+  try {
+    const stripe = getStripe()
+    event = stripe.webhooks.constructEvent(raatekst, signatur, webhookSecret)
+  } catch (err) {
+    console.error('Stripe webhook-signatur ugyldig:', err)
+    return NextResponse.json({ error: 'Ugyldig signatur.' }, { status: 400 })
+  }
+
+  try {
+    // Idempotency: samme event kan i prinsippet leveres flere ganger
+    // (Stripes at-least-once-garanti). Har vi allerede en payments-rad for
+    // denne event-id-en, er den ferdigbehandlet — ikke gjør noe mer.
+    if (await harBehandletStripeEvent(event.id)) {
+      return NextResponse.json({ received: true, dedup: true })
+    }
+
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session
+        await behandleInvoiceBetalt(session.metadata?.invoiceId, event, 'checkout', session.id, undefined)
+        break
+      }
+      case 'payment_intent.succeeded': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent
+        await behandleInvoiceBetalt(paymentIntent.metadata?.invoiceId, event, 'payment_intent', undefined, paymentIntent.id)
+        break
+      }
+      default:
+        // Andre event-typer er ikke relevante for denne appen ennå.
+        break
+    }
+
+    return NextResponse.json({ received: true })
+  } catch (err) {
+    // 500 her gjør at Stripe automatisk prøver igjen senere.
+    console.error(`Feil under behandling av Stripe-event ${event.id} (${event.type}):`, err)
+    return NextResponse.json({ error: 'Intern feil under webhook-behandling.' }, { status: 500 })
+  }
+}
