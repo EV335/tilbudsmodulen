@@ -354,6 +354,60 @@ kan ikke dekrypteres med ny). Bruker må logge inn på nytt.
 Alle tre nøkler bekreftet fungerende via direkte API-kall (Stripe
 `/v1/balance`, Resend `/domains`) etter fiksen.
 
+### 10. ✅ Offentlig betalingslenke bygget, testet og merget — 2026-08-09 (PR #3, `25ecc31`)
+**Hvorfor:** før dette kunne kun den innloggede håndverkeren åpne og betale en
+faktura — sluttkunden hadde ingen vei inn. Det gjorde Stripe-integrasjonen til en
+demo av en betalingsfunksjon, ikke en fungerende en. Bruker valgte å bygge det.
+
+**Design:** `invoices.public_token` (uuid, unique, `default gen_random_uuid()`) +
+siden `/betal/[token]` + rutene `/api/public/invoices/[token]`,
+`/api/public/payments/create-checkout`, `/api/public/payments/create-payment-intent`.
+**Tokenet ER autentiseringen** — samme mønster som Stripe/Xero sine payment links.
+Beløp slås fortsatt opp server-side fra `invoices`-raden, aldri fra klienten, så
+de offentlige rutene har ikke mer tillit enn de autentiserte.
+`CheckoutButton`/`PaymentIntentForm` tar nå enten `invoiceId` (innlogget) eller
+`token` (offentlig). Lenken legges ved i faktura-e-post og PDF, og håndverkeren
+får en "Kopier betalingslenke til kunden"-knapp.
+Migrasjon: `migrations/20260809_add_invoice_public_token.sql` (kjørt i Supabase).
+
+**⚠️ Viktig bug funnet under live-testing — gjelder ALLE fremtidige sesjonsløse ruter:**
+Etter betaling fortsatte kunden å se "Utkast" **med betalingsknappen fortsatt
+synlig** — altså kunne de betalt to ganger. Databasen sa `paid` hele tiden; det
+var lesestien som var råtten. Årsak: supabase-js kaller global `fetch`, som
+Next.js patcher og cacher — **til disk i `.next/cache`**, så cachen overlevde både
+server-restart og mitt første fiksforsøk. De innloggede `/api/invoices`-rutene har
+aldri hatt problemet, men kun flaks: `getServerSession()` leser cookies, noe som
+gjør ruten dynamisk og dermed opt-out av fetch-cachen automatisk.
+**Fiks:** `export const dynamic = 'force-dynamic'` + `fetchCache = 'force-no-store'`
++ `revalidate = 0` på `/api/public/invoices/[token]`, samt `cache: 'no-store'` på
+klient-fetchen. **Enhver ny GET-route-handler som ikke leser cookies/headers må
+gjøre det samme** — fellen står fortsatt der for neste sesjonsløse rute.
+
+**Verifisert end-to-end:** opprettet INV-000004 (kr 1750, Privat) → åpnet
+`/betal/[token]` **uten sesjon** → betalte med testkort → webhooks alle `200` →
+faktura `Betalt` → PDF generert. Public-API-en bekreftet å fungere helt uten
+cookies (curl) og gir `404` på ukjent token. `tsc` og `next build` rene (26 ruter).
+
+### 11. Firmaoppsett + småfunn — 2026-08-09
+- **`firma`-rad opprettet** for brukerens konto: `firmanavn = "Tilbudsmaskinen AS"`
+  (resten av feltene står tomme — bruker har ikke org.nr/adresse/kontonummer klart
+  ennå). Dette er **per-bruker-data**: `firma` er scopet på `user_id`, så hvert
+  firma som registrerer seg fyller ut sitt eget. Riktig modellert allerede.
+- **Jeg logget ved et uhell ut brukeren.** Jeg klikket "lagre" via en selector som
+  traff første `type="submit"` på siden — det var "Logg ut" i headeren. Opprettet
+  derfor firma-raden direkte via Supabase REST i stedet for enda en
+  magic-link-runde. **Konsekvens: lagre-knappen på `/innstillinger/firma` er
+  fortsatt ikke klikk-testet.**
+- **Sjekket en mulig felle som ville rammet alle nye brukere:** `POST /api/firma`
+  bruker `upsert(..., { onConflict: 'user_id' })`, som krever unique-constraint på
+  `firma.user_id`. Uten den ville lagring feilet for alle. Testet den faktiske
+  upsert-veien via REST — den merget inn i samme rad (samme `id`), så constrainten
+  finnes. **Ingen bug.**
+- **Merk:** `.next` ble korrupt av at jeg kjørte `next build` (produksjon) inn i
+  samme katalog som dev-serveren bruker → statiske chunks 404-et og sider hang på
+  "Laster...". Løsning: stopp dev-server, `rm -rf .next`, start igjen. Verdt å vite
+  neste gang en side henger uten feil i loggen.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -366,21 +420,49 @@ Ba brukeren om retning (installere `gh`? PR mot et eldre commit som base? La det
 være?) — ikke besvart ennå.
 
 ## Åpne spørsmål til bruker
-1. ~~Hvordan vil du håndtere `env.local`-sikkerhetsfunnet~~ — løst, se punkt 4.
-2. ~~A eller B for gjenoppretting~~ — bruker valgte **A**, gjennomført på branch
-   `fix/restore-invoice-payment-system`, se punkt 6.
-3. ~~PR-retning~~ — bruker valgte "branch + jeg pusher, du åpner PR selv på
-   GitHub.com" (`gh` fortsatt ikke installert, så ingen `gh pr create` herfra).
-4. **Nytt:** Skal jeg slette `tilbudsmoduler.patch`, `extract-patch.ps1` og
-   `apply-and-test.ps1` fra repoet nå som patchen er "brukt opp"? De er en
-   risiko hvis de kjøres på nytt (se punkt 6) — men jeg har ikke fjernet dem
-   uten å spørre, siden de ikke er noe jeg selv la til.
-5. Bør Supabase service_role-nøkkelen roteres i dashbordet (lå i klartekst i
-   `env.local` en periode, se punkt 4)? Kun brukeren kan gjøre dette.
-6. Vil du at jeg kjører migrasjonen mot Supabase, eller gjør du det selv i
-   SQL Editor (se punkt 6, "IKKE gjort ennå")? Jeg har ikke tilgang til
-   databasen herfra uansett, så dette må uansett gjøres av brukeren.
+1. ~~`env.local`-sikkerhetsfunnet~~ — løst, se punkt 4.
+2. ~~A eller B for gjenoppretting~~ — bruker valgte **A**, se punkt 6.
+3. ~~PR-retning~~ — avklart: jeg lager branch og pusher, bruker åpner/merger PR
+   selv på GitHub.com (`gh` er ikke installert). Fungerte for PR #1, #2 og #3.
+4. ~~Nøkkelrotasjon~~ — gjennomført, se punkt 9.
+5. ~~Migrasjoner~~ — begge kjørt av bruker (20260808 + 20260809), verifisert mot
+   live-skjemaet.
+6. **Fortsatt åpent: slette `tilbudsmoduler.patch`, `extract-patch.ps1`,
+   `apply-and-test.ps1`?** Bruker har sagt ja, men `git rm` blir blokkert av
+   auto-mode-klassifisereren (sletting av sporede filer krever at bruker kjører
+   det selv). Kommando:
+   `git rm tilbudsmoduler.patch extract-patch.ps1 apply-and-test.ps1`
+
+## Gjenstår før "ferdig utviklet" (mål: lokalt, klart for kolleger)
+1. **Bedrift-flyten på HTTPS** — bekrefte at "A processing error occurred."
+   forsvinner (se punkt 8). Betalingen går faktisk gjennom, men kunden ser en
+   feilmelding. Krever en HTTPS-deploy for å avgjøre.
+2. **Faktura-e-post til en ekte kundeadresse** — domenet er verifisert på Resend
+   og `EMAIL_FROM` er byttet til `noreply@tilbudsmaskinen.no`, men det er ikke
+   bekreftet at en kunde med annen adresse enn `tilbudsmaskinen.no@gmail.com`
+   faktisk mottar fakturaen. Bekreft også at betalingslenken står i e-posten.
+3. **Lagre-knappen på `/innstillinger/firma`** — aldri klikk-testet (se punkt 11).
+4. **Migrasjonen `20260808_...sql` er ikke idempotent** — `create table` for
+   `customers`/`invoices`/`payments` mangler `if not exists` og feiler **stille**
+   mot et prosjekt der tabellene finnes fra før (skjedde her, se punkt 7). Bør
+   fikses før den kjøres i et nytt miljø / for en ny bruker.
+5. Rydde bort patch-scriptene (punkt 6 over).
 
 ## Env-vars
-Stripe secret/publishable/webhook-nøklene og Supabase publishable-nøkkelen brukeren
-limte inn 2026-08-08 er nå flyttet til `.env.local` (se punkt 4 — løst).
+Alle nøkler ligger i `.env.local` (gitignored). Alle eksponerte nøkler er rotert,
+se punkt 9. **Arbeidsprinsipp: nye hemmeligheter limes aldri inn i chatten** —
+bruker redigerer `.env.local` selv, verifisering skjer via `curl` som aldri
+skriver ut verdien.
+
+`STRIPE_WEBHOOK_SECRET` må matche den kjørende `stripe listen`-sesjonen (ikke
+Dashboard-secreten) for lokal testing. Stripe ga samme secret etter PC-restart,
+men sjekk `%TEMP%\stripe-listen-err.log` hvis webhooks plutselig feiler.
+
+## Miljø-noter
+- Node/npm er **ikke på PATH** i verktøy-shellet. Full sti:
+  `"/c/Program Files/nodejs/node.exe" node_modules/typescript/bin/tsc --noEmit`
+- Stripe CLI: `C:\Users\event\AppData\Local\Microsoft\WinGet\Packages\Stripe.StripeCli_Microsoft.Winget.Source_8wekyb3d8bbwe\stripe.exe`
+- `stripe listen --forward-to localhost:3000/api/webhooks/stripe` må kjøre for at
+  webhooks skal nå lokal dev-server.
+- Ikke kjør `next build` mens dev-serveren kjører — de deler `.next` og det
+  korrupterer den (se punkt 11).
