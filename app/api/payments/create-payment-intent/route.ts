@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { getStripe } from '@/lib/stripe'
-import { hentFaktura, hentEllerOpprettStripeCustomerId, settFakturaPaymentIntent } from '@/lib/payments'
+import { hentFaktura, klargjorPaymentIntent } from '@/lib/payments'
+import { ikkeBetalbarGrunn } from '@/lib/fakturaStatus'
 
 // Bedrift-flyt: PaymentIntent + Stripe Customer, for bruk med Stripe Elements
 // på klienten (kort eller lagret betalingsmetode).
@@ -25,25 +25,14 @@ export async function POST(req: NextRequest) {
     if (!faktura.kunde) {
       return NextResponse.json({ error: 'Fakturaen mangler kundeinformasjon.' }, { status: 400 })
     }
-    if (faktura.status === 'paid') {
-      return NextResponse.json({ error: 'Fakturaen er allerede betalt.' }, { status: 400 })
+    const ikkeBetalbar = ikkeBetalbarGrunn(faktura.status)
+    if (ikkeBetalbar) {
+      return NextResponse.json({ error: ikkeBetalbar }, { status: 400 })
     }
 
-    const stripeCustomerId = await hentEllerOpprettStripeCustomerId(faktura.kunde)
+    const clientSecret = await klargjorPaymentIntent(faktura)
 
-    const stripe = getStripe()
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(faktura.amount * 100),
-      currency: faktura.currency,
-      customer: stripeCustomerId,
-      automatic_payment_methods: { enabled: true },
-      setup_future_usage: 'off_session',
-      metadata: { invoiceId: faktura.id },
-    })
-
-    await settFakturaPaymentIntent(faktura.id, paymentIntent.id)
-
-    return NextResponse.json({ clientSecret: paymentIntent.client_secret })
+    return NextResponse.json({ clientSecret })
   } catch (err) {
     console.error('Feil i /api/payments/create-payment-intent:', err)
     const message = err instanceof Error ? err.message : 'Klarte ikke å starte betaling.'

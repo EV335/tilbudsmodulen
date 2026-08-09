@@ -20,9 +20,12 @@ STRIPE_PRICE_ID_STANDARD=price_...
 # den vil PaymentIntentForm vise en tydelig feilmelding i stedet for å krasje.
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
 
-# App-URL brukt i success_url/cancel_url for Stripe Checkout.
-# Faller tilbake til NEXTAUTH_URL (som allerede finnes i .env.local) hvis
-# denne ikke er satt, så den er strengt tatt valgfri i sandbox.
+# App-URL. Brukes til success_url/cancel_url for Stripe Checkout OG til å
+# bygge betalingslenken /betal/[token] som legges i faktura-PDF-en og
+# faktura-e-posten. Faller tilbake til NEXTAUTH_URL, deretter localhost:3000.
+# ⚠️ MÅ settes ved deploy. Gjør du det ikke, peker hver eneste betalingslenke
+# hos hver eneste kunde til http://localhost:3000 — en død lenke, uten at noe
+# feiler synlig noe sted. Se appUrl() i lib/invoice.ts.
 APP_URL=http://localhost:3000
 
 # Finnes allerede i .env.local fra før (Supabase-oppsettet):

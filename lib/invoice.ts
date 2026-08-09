@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import nodemailer from 'nodemailer'
 import { supabase } from '@/lib/supabase'
 import { Faktura, settFakturaPdfUrl } from '@/lib/payments'
+import { formatKr } from '@/lib/format'
 
 export interface FirmaInfo {
   firmanavn: string
@@ -9,10 +10,6 @@ export interface FirmaInfo {
   orgnr?: string | null
   adresse?: string | null
   bankkonto?: string | null
-}
-
-function formatKr(beløp: number) {
-  return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
 }
 
 function appUrl(): string {
@@ -24,7 +21,14 @@ export function fakturaBetalingslenke(faktura: Faktura): string {
 }
 
 export async function hentFirmaForBruker(userId: string): Promise<FirmaInfo | null> {
-  const { data } = await supabase.from('firma').select('*').eq('user_id', userId).maybeSingle()
+  const { data, error } = await supabase.from('firma').select('*').eq('user_id', userId).maybeSingle()
+  if (error) {
+    // Feilen ble tidligere slukt helt. Konsekvensen var stille og forvirrende:
+    // fakturaen ble generert med avsender "TilbudsMaskinen" i stedet for
+    // firmanavnet, uten spor noe sted av hvorfor.
+    console.error(`Klarte ikke å hente firma for bruker ${userId}:`, error)
+    return null
+  }
   return (data as FirmaInfo) ?? null
 }
 
@@ -61,8 +65,14 @@ function lesBildeStorrelse(buf: Buffer): { w: number; h: number } {
 }
 
 async function hentLogo(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  // Timeout er ikke pynt: denne funksjonen kjører inne i Stripe-webhooken.
+  // Henger Storage, henger webhook-svaret, Stripe gir opp og prøver igjen —
+  // og da stopper idempotency-sjekken det andre forsøket, slik at fakturaen
+  // blir stående betalt UTEN PDF og e-post.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, { signal: controller.signal })
     if (!res.ok) return null
     const buffer = Buffer.from(await res.arrayBuffer())
     const contentType = res.headers.get('content-type') || 'image/png'
@@ -70,6 +80,8 @@ async function hentLogo(url: string): Promise<{ dataUrl: string; w: number; h: n
     return { dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`, w, h }
   } catch {
     return null
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -247,10 +259,12 @@ export async function sendFakturaEpost(faktura: Faktura, pdfBuffer: Buffer, firm
       ],
     })
   } catch (err) {
-    // I Resend sandbox-modus kan e-post KUN sendes til kontoens egen adresse
-    // (tilbudsmaskinen.no@gmail.com) — se docs/payments-setup.md. Dette er en
-    // forventet, kjent begrensning, ikke en uventet feil, så vi logger og
-    // fortsetter i stedet for å kaste videre og feile hele webhook-kallet.
+    // Denne funksjonen kalles fra Stripe-webhooken, etter at betalingen er
+    // registrert og fakturaen markert betalt. En e-postfeil skal derfor ikke
+    // kaste videre: da ville webhooken svart 500, Stripe prøvd igjen, og
+    // idempotency-sjekken stoppet det andre forsøket — uten at e-posten kom
+    // frem uansett. Vi logger i stedet, og håndverkeren kan bruke "Send på
+    // nytt" på fakturasiden.
     console.error(`Klarte ikke å sende faktura-e-post for ${faktura.invoice_number}:`, err)
   }
 }

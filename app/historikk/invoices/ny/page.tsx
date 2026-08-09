@@ -5,15 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import type { Kunde } from '@/lib/payments'
 import type { LagretTilbud } from '@/lib/historikk'
+import { formatKr } from '@/lib/format'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
-
-function formatKr(beløp: number) {
-  return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
-}
 
 // useSearchParams() krever en Suspense-grense for at Next.js skal kunne
 // prerendere ruten (ellers feiler `next build` med

@@ -95,8 +95,8 @@ export async function opprettKunde(userId: string, input: OpprettKundeInput): Pr
 }
 
 // Sikrer at kunden har en Stripe Customer-id. Oppretter i Stripe + lagrer
-// på raden hvis den mangler. Brukes av Bedrift-flyten (PaymentIntent).
-export async function hentEllerOpprettStripeCustomerId(kunde: Kunde): Promise<string> {
+// på raden hvis den mangler. Kun intern — går via klargjorPaymentIntent().
+async function hentEllerOpprettStripeCustomerId(kunde: Kunde): Promise<string> {
   if (kunde.stripe_customer_id) return kunde.stripe_customer_id
 
   const stripe = getStripe()
@@ -164,6 +164,39 @@ export async function hentFakturaByPublicToken(token: string): Promise<Faktura |
   return data as unknown as Faktura | null
 }
 
+// Det sluttkunden på /betal/[token] faktisk trenger å se. Ruten er
+// uautentisert (tokenet ER autentiseringen), så den skal ikke røpe interne
+// felter: user_id, customer_id, tilbud_id, Stripe-id-er, eller håndverkerens
+// org.nr/bankkonto/kundens kontaktopplysninger.
+export interface OffentligFaktura {
+  invoice_number: string
+  amount: number
+  currency: string
+  status: FakturaStatus
+  due_date: string | null
+  paid_at: string | null
+  created_at: string
+  pdf_url: string | null
+  // Avgjør om kunden får Stripe Checkout (privat) eller Elements (bedrift).
+  kundetype: KundeType | null
+  firmanavn: string | null
+}
+
+export function tilOffentligFaktura(faktura: Faktura, firmanavn: string | null): OffentligFaktura {
+  return {
+    invoice_number: faktura.invoice_number,
+    amount: faktura.amount,
+    currency: faktura.currency,
+    status: faktura.status,
+    due_date: faktura.due_date,
+    paid_at: faktura.paid_at,
+    created_at: faktura.created_at,
+    pdf_url: faktura.pdf_url,
+    kundetype: faktura.kunde?.type ?? null,
+    firmanavn,
+  }
+}
+
 export async function hentFaktura(userId: string, id: string): Promise<Faktura | null> {
   const { data, error } = await supabase
     .from('invoices')
@@ -183,14 +216,36 @@ export interface OpprettFakturaInput {
   dueDate?: string | null
 }
 
+// Fakturanummer er en egen, fortløpende serie PER bruker — bokføringsforskriften
+// krever nummerering uten hull per utsteder, og appen er flerbruker.
+// Se migrations/20260810_per_user_invoice_numbering.sql.
+//
+// Faller tilbake på den gamle globale sekvensen hvis migrasjonen ikke er kjørt,
+// slik at fakturering ikke stopper opp — men logger høylytt, for da har hver
+// bruker fortsatt en hullete serie.
+async function nesteFakturanummer(userId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('next_invoice_number', { p_user_id: userId })
+  if (!error) return data as string
+
+  const { data: globalt, error: globalFeil } = await supabase.rpc('next_invoice_number')
+  if (globalFeil) {
+    throw new Error(`Klarte ikke å generere fakturanummer: ${error.message}`)
+  }
+
+  console.error(
+    'VARSEL: migrations/20260810_per_user_invoice_numbering.sql er ikke kjørt ennå. ' +
+      'Bruker den globale fakturasekvensen — nummerseriene blir hullete per bruker.'
+  )
+  return globalt as string
+}
+
 export async function opprettFaktura(userId: string, input: OpprettFakturaInput): Promise<Faktura> {
-  const { data: invoiceNumber, error: seqError } = await supabase.rpc('next_invoice_number')
-  if (seqError) throw new Error(`Klarte ikke å generere fakturanummer: ${seqError.message}`)
+  const invoiceNumber = await nesteFakturanummer(userId)
 
   const { data, error } = await supabase
     .from('invoices')
     .insert({
-      invoice_number: invoiceNumber as string,
+      invoice_number: invoiceNumber,
       user_id: userId,
       tilbud_id: input.tilbudId || null,
       customer_id: input.customerId,
@@ -220,7 +275,9 @@ export async function settFakturaCheckoutSession(invoiceId: string, sessionId: s
   if (error) throw new Error(`Klarte ikke å oppdatere faktura med checkout-session: ${error.message}`)
 }
 
-export async function settFakturaPaymentIntent(invoiceId: string, paymentIntentId: string): Promise<void> {
+// Kun intern — rutene går via klargjorPaymentIntent(), som også gjenbruker en
+// eksisterende PaymentIntent i stedet for å lage en ny per sidevisning.
+async function settFakturaPaymentIntent(invoiceId: string, paymentIntentId: string): Promise<void> {
   const { error } = await supabase
     .from('invoices')
     .update({
@@ -234,6 +291,63 @@ export async function settFakturaPaymentIntent(invoiceId: string, paymentIntentI
   if (error) throw new Error(`Klarte ikke å oppdatere faktura med payment intent: ${error.message}`)
 }
 
+// PaymentIntent-statuser der intenten fortsatt kan betales av kunden.
+// 'succeeded'/'processing'/'canceled' er ferdigbehandlet og kan ikke gjenbrukes.
+const GJENBRUKBARE_PI_STATUSER = [
+  'requires_payment_method',
+  'requires_confirmation',
+  'requires_action',
+] as const
+
+// Klargjør en betaling på fakturaen og returnerer client_secret til Stripe
+// Elements. Gjenbruker en eksisterende PaymentIntent når den fortsatt kan
+// betales — uten dette opprettet hver eneste visning av betalingsskjemaet en
+// ny PaymentIntent (og risikerte en ny Stripe Customer i samme slengen), som
+// ble liggende igjen som støy i Stripe-kontoen.
+export async function klargjorPaymentIntent(faktura: Faktura): Promise<string> {
+  if (!faktura.kunde) throw new Error('Fakturaen mangler kundeinformasjon.')
+
+  const stripe = getStripe()
+  const belopIOre = Math.round(faktura.amount * 100)
+
+  if (faktura.stripe_payment_intent_id) {
+    try {
+      const eksisterende = await stripe.paymentIntents.retrieve(faktura.stripe_payment_intent_id)
+      const kanBetalesFortsatt = (GJENBRUKBARE_PI_STATUSER as readonly string[]).includes(eksisterende.status)
+
+      if (kanBetalesFortsatt && eksisterende.amount === belopIOre && eksisterende.currency === faktura.currency) {
+        if (eksisterende.client_secret) return eksisterende.client_secret
+      } else if (kanBetalesFortsatt) {
+        // Beløp eller valuta er endret siden sist — den gamle intenten ville
+        // trukket feil sum, så den kanselleres i stedet for å bli liggende.
+        await stripe.paymentIntents.cancel(eksisterende.id)
+      }
+    } catch (err) {
+      // Intenten finnes ikke lenger, eller tilhører en annen Stripe-konto
+      // (typisk etter nøkkelbytte test/live). Lag en ny i stedet for å feile.
+      console.warn(`Kunne ikke gjenbruke PaymentIntent ${faktura.stripe_payment_intent_id}:`, err)
+    }
+  }
+
+  const stripeCustomerId = await hentEllerOpprettStripeCustomerId(faktura.kunde)
+
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: belopIOre,
+    currency: faktura.currency,
+    customer: stripeCustomerId,
+    automatic_payment_methods: { enabled: true },
+    setup_future_usage: 'off_session',
+    metadata: { invoiceId: faktura.id },
+  })
+
+  await settFakturaPaymentIntent(faktura.id, paymentIntent.id)
+
+  if (!paymentIntent.client_secret) {
+    throw new Error('Stripe returnerte ingen client secret for betalingen.')
+  }
+  return paymentIntent.client_secret
+}
+
 export async function markerFakturaBetalt(invoiceId: string): Promise<Faktura> {
   const { data, error } = await supabase
     .from('invoices')
@@ -244,6 +358,24 @@ export async function markerFakturaBetalt(invoiceId: string): Promise<Faktura> {
 
   if (error) throw new Error(`Klarte ikke å markere faktura som betalt: ${error.message}`)
   return data as unknown as Faktura
+}
+
+// Annullerer en faktura som ikke skulle vært sendt. En BETALT faktura kan ikke
+// kanselleres — da har penger skiftet hender, og riktig behandling er en
+// kreditnota/refusjon, ikke å omskrive historikken. `.neq('status', 'paid')`
+// gjør den regelen til en databasebetingelse, ikke bare en sjekk i ruten.
+export async function kansellerFaktura(userId: string, id: string): Promise<Faktura | null> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .neq('status', 'paid')
+    .select('*, kunde:customers(*)')
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å kansellere faktura: ${error.message}`)
+  return data as unknown as Faktura | null
 }
 
 export async function markerFakturaFeilet(invoiceId: string): Promise<void> {

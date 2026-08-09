@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { hentFakturaByPublicToken } from '@/lib/payments'
+import { hentFakturaByPublicToken, tilOffentligFaktura } from '@/lib/payments'
 import { hentFirmaForBruker } from '@/lib/invoice'
 
 // MÅ være dynamisk. Next.js cacher GET-route-handlers statisk med mindre de
@@ -24,5 +24,6 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
 
   const firma = await hentFirmaForBruker(faktura.user_id)
 
-  return NextResponse.json({ ...faktura, firma })
+  // Whitelistet DTO — aldri hele raden. Se tilOffentligFaktura().
+  return NextResponse.json(tilOffentligFaktura(faktura, firma?.firmanavn ?? null))
 }

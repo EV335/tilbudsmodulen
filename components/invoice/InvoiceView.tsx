@@ -2,28 +2,26 @@
 
 import { useState } from 'react'
 import type { Faktura } from '@/lib/payments'
-import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE } from '@/lib/fakturaStatus'
+import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE, kanBetales } from '@/lib/fakturaStatus'
+import { formatKr, formatDato } from '@/lib/format'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import CheckoutButton from '@/components/payments/CheckoutButton'
 import PaymentIntentForm from '@/components/payments/PaymentIntentForm'
 
-function formatKr(beløp: number) {
-  return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
-}
-
-function formatDato(iso: string) {
-  return new Date(iso).toLocaleDateString('nb-NO')
-}
-
 interface InvoiceViewProps {
   faktura: Faktura
+  // Satt rett etter en betaling, mens vi venter på at Stripe-webhooken skal
+  // markere fakturaen betalt. Skjuler betalingsseksjonen i mellomtiden, slik
+  // at kunden ikke kan rekke å betale to ganger.
+  ventPaBekreftelse?: boolean
 }
 
-export default function InvoiceView({ faktura: initial }: InvoiceViewProps) {
+export default function InvoiceView({ faktura: initial, ventPaBekreftelse = false }: InvoiceViewProps) {
   const [faktura, setFaktura] = useState(initial)
   const [resendStatus, setResendStatus] = useState<'idle' | 'sender' | 'sendt' | 'feil'>('idle')
   const [lenkeKopiert, setLenkeKopiert] = useState(false)
+  const [kansellerStatus, setKansellerStatus] = useState<'idle' | 'kansellerer' | 'feil'>('idle')
 
   function kopierBetalingslenke() {
     const lenke = `${window.location.origin}/betal/${faktura.public_token}`
@@ -45,7 +43,29 @@ export default function InvoiceView({ faktura: initial }: InvoiceViewProps) {
     }
   }
 
-  const kanBetale = faktura.status === 'pending' || faktura.status === 'draft'
+  async function handleKanseller() {
+    if (!window.confirm(`Kansellere faktura ${faktura.invoice_number}? Kunden vil ikke lenger kunne betale den.`)) {
+      return
+    }
+    setKansellerStatus('kansellerer')
+    try {
+      const res = await fetch(`/api/invoices/${faktura.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Klarte ikke å kansellere.')
+      setFaktura(data)
+      setKansellerStatus('idle')
+    } catch {
+      setKansellerStatus('feil')
+    }
+  }
+
+  const kanBetale = kanBetales(faktura.status) && !ventPaBekreftelse
+  // En betalt faktura krediteres/refunderes, den kanselleres ikke.
+  const kanKanselleres = faktura.status !== 'paid' && faktura.status !== 'cancelled'
 
   return (
     <div className="space-y-6">
@@ -85,6 +105,12 @@ export default function InvoiceView({ faktura: initial }: InvoiceViewProps) {
         </div>
       </Card>
 
+      {ventPaBekreftelse && (
+        <Card padding="md">
+          <p className="text-black/70">Bekrefter betalingen hos Stripe...</p>
+        </Card>
+      )}
+
       {kanBetale && (
         <Card>
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -98,6 +124,27 @@ export default function InvoiceView({ faktura: initial }: InvoiceViewProps) {
           ) : (
             <CheckoutButton invoiceId={faktura.id} />
           )}
+        </Card>
+      )}
+
+      {kanKanselleres && (
+        <Card padding="md" className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="font-medium">Kanseller fakturaen</div>
+            <div className="text-sm text-black/50">
+              Sendt til feil kunde eller med feil beløp? Kansellering stopper betalingslenken.
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={handleKanseller}
+            disabled={kansellerStatus === 'kansellerer'}
+          >
+            {kansellerStatus === 'kansellerer' && 'Kansellerer...'}
+            {kansellerStatus === 'feil' && 'Feilet — prøv igjen'}
+            {kansellerStatus === 'idle' && 'Kanseller faktura'}
+          </Button>
         </Card>
       )}
     </div>

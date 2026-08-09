@@ -22,10 +22,62 @@
 
 
 -- ----------------------------------------------------------------------------
+-- DEL -1: SIKRINGSVAKT — LES DETTE FØR DU KJØRER FILEN
+--
+-- Dette er OPPSETTSKRIPTET FOR ET TOMT PROSJEKT, ikke en migrasjon. DEL 0
+-- under gjør `drop table public.users cascade`, og alt henger på users via
+-- fremmednøkler: tilbud, firma, kunder, customers, invoices, payments. Å
+-- kjøre denne filen mot en database som er i bruk sletter derfor ALT —
+-- inkludert fakturaer og betalingshistorikk — uten videre advarsel.
+--
+-- Vakten under stopper akkurat det: finnes det brukere fra før, avbrytes hele
+-- skriptet (SQL Editor kjører alt i én transaksjon, så ingenting utføres).
+--
+-- Skal du faktisk nullstille et prosjekt med data i, må du fjerne denne
+-- blokken bevisst — og ta backup først.
+--
+-- Nye endringer i skjemaet skal IKKE inn her. De hører hjemme som en ny fil
+-- i migrations/, som `alter table ... add column if not exists ...`.
+-- ----------------------------------------------------------------------------
+
+do $$
+declare
+  antall_brukere bigint;
+begin
+  if to_regclass('public.users') is null then
+    raise notice 'TilbudsMaskinen: tom database — kjører oppsett.';
+    return;
+  end if;
+
+  execute 'select count(*) from public.users' into antall_brukere;
+
+  if antall_brukere > 0 then
+    raise exception 'STOPP: databasen er allerede i bruk (% brukere).', antall_brukere
+      using
+        detail = 'supabase/schema.sql dropper public.users cascade, som ville slettet '
+              || 'tilbud, firma, kunder, customers, invoices og payments sammen med den.',
+        hint = 'Skal du legge til noe nytt, lag en ny fil i migrations/ i stedet. '
+            || 'Skal du virkelig nullstille prosjektet, ta backup og fjern DEL -1 manuelt.';
+  end if;
+
+  raise notice 'TilbudsMaskinen: users finnes, men er tom — trygt å kjøre oppsett på nytt.';
+end $$;
+
+
+-- ----------------------------------------------------------------------------
 -- DEL 0: Opprydding av forrige forsøk (next_auth-skjema)
 -- ----------------------------------------------------------------------------
 
-drop trigger if exists on_next_auth_user_created on next_auth.users;
+-- `drop trigger if exists ... on next_auth.users` feiler hvis selve tabellen
+-- ikke finnes (IF EXISTS gjelder triggeren, ikke tabellen) — altså i ethvert
+-- helt nytt prosjekt. Derfor denne innpakningen.
+do $$
+begin
+  if to_regclass('next_auth.users') is not null then
+    execute 'drop trigger if exists on_next_auth_user_created on next_auth.users';
+  end if;
+end $$;
+
 drop function if exists public.sync_next_auth_user();
 drop table if exists public.tilbud cascade;
 drop table if exists public.kunder cascade;

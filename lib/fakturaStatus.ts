@@ -18,6 +18,24 @@ export const FAKTURA_STATUS_FARGE: Record<FakturaStatus, string> = {
   cancelled: 'text-black/40',
 }
 
+// Én definisjon for både håndverkerens visning (InvoiceView) og kundens
+// offentlige betalingsside (/betal/[token]) — de to må aldri være uenige om
+// hvorvidt betalingsknappen skal vises.
+// 'failed' er med: et avvist kort skal kunne prøves på nytt med et annet.
+export function kanBetales(status: FakturaStatus): boolean {
+  return status === 'draft' || status === 'pending' || status === 'failed'
+}
+
+// Serversidens versjon av samme regel, med en melding å gi klienten. Brukes av
+// alle fire betalingsrutene — UI-et kan skjule knappen, men det er denne som
+// faktisk stopper en betaling fra en gammel lenke eller et direkte API-kall.
+export function ikkeBetalbarGrunn(status: FakturaStatus): string | null {
+  if (kanBetales(status)) return null
+  return status === 'paid'
+    ? 'Fakturaen er allerede betalt.'
+    : 'Fakturaen er kansellert og kan ikke betales.'
+}
+
 export const FAKTURA_STATUS_OPTIONS: { value: FakturaStatus | ''; label: string }[] = [
   { value: '', label: 'Alle statuser' },
   { value: 'draft', label: 'Utkast' },
