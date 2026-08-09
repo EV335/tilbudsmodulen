@@ -220,11 +220,16 @@ installert, bare ikke på PATH i verktøy-shellet — full sti står i
 Begge fiksene er committet på branchen: `428ae6c` (restaurering + env-sikring)
 og `12a1f2c` (Suspense-fiks), og pushet til origin.
 
+**Oppdatering 2026-08-09 — PR merget, migrasjon kjørt:** Bruker merget PR #2
+(`fix/restore-invoice-payment-system` → `master`, commit `2f82a8d`) på
+GitHub.com. Lokal `master` fast-forwardet til samme commit, lokal
+feature-branch slettet. Bruker kjørte migrasjonen i Supabase SQL Editor uten
+feil — bekreftet med skjermbilde av Table Editor: `customers`, `invoices`,
+`payments`, `firma` finnes alle i `public`-skjemaet sammen med de
+eksisterende tabellene (`accounts`, `sessions`, `tilbud`, `kunder`, `users`,
+`verification_tokens`). Databasen er nå klar for betalingsmodulen.
+
 **Fortsatt IKKE gjort — krever ting jeg ikke har tilgang til herfra:**
-- **Ikke kjørt migrasjonen i Supabase** (brukeren må gjøre dette selv, se
-  `docs/payments-setup.md` punkt 2 — spesielt viktig hvis patch-versjonen av
-  migrasjonen ved et uhell allerede ble kjørt mot databasen, siden `firma`-
-  tabellen da kan ha feil kolonner). Ingen database-tilgang fra denne økten.
 - **Ikke faktisk logget inn og klikket gjennom betalingsflytene** (opprette
   kunde → opprette faktura → "Betal nå"/Stripe Elements → webhook → PDF).
   Innlogging går via ekte magic-link-e-post (nå med ekte Resend-nøkkel) — jeg
