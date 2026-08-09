@@ -273,12 +273,41 @@ ekte Stripe Checkout-side → betalt med testkort `4242...` → redirect tilbake
 `payment_intent.succeeded`, `checkout.session.completed`,
 `payment_intent.created`, `charge.updated`), alle `200` → faktura markert
 **Betalt**, PDF generert og lastet opp til Supabase Storage, nedlastingslenke
-fungerer. Ingen feil i noe steg. **Bedrift-flyten (PaymentIntentForm/Stripe
-Elements) er IKKE testet ennå** — kun Checkout-flyten (Privat).
+fungerer. Ingen feil i noe steg.
+
+### 8. Bedrift-flyten (PaymentIntentForm/Stripe Elements) testet — 2026-08-09
+Opprettet Bedrift-kunde + faktura (INV-000002, kr 2500), fylte ut ekte
+Stripe Elements-kortskjema, trykte Betal.
+
+**Fant en reell bug**: `useEffect` i `PaymentIntentForm.tsx` hadde ingen
+guard mot React 18 StrictMode sin dobbelt-kjøring av effekter i dev — hver
+sidevisning opprettet **to separate PaymentIntents** (og potensielt to
+Stripe-kunder via `hentEllerOpprettStripeCustomerId`-racen). Fikset med en
+`useRef`-guard i `76a8af8` som sikrer fetch kun skjer én gang. Verifisert
+med ny faktura (INV-000003): kun én `POST /api/payments/create-payment-intent`
+denne gangen.
+
+**Uavhengig av det**: begge betalingsforsøkene (før og etter fiksen) viste
+**"A processing error occurred."** i UI-et etter at kortdetaljene ble sendt
+inn — MEN Stripe CLI-loggen viste at betalingen faktisk gikk gjennom hver
+gang (`charge.succeeded`, `payment_intent.succeeded`, alle webhooks `200`),
+og fakturaen ble korrekt markert **Betalt** med PDF generert, akkurat som i
+Checkout-flyten. Årsaken er trolig **ikke** en kodefeil, men en kjent
+Stripe.js-begrensning: konsollen logger hver gang
+`"You may test your Stripe.js integration over HTTP. However, live
+Stripe.js integrations must use HTTPS."` — Checkout-flyten unngår dette
+siden den redirecter til Stripes egen HTTPS-hostede side, mens
+PaymentIntentForm kjører Stripe Elements-iframes direkte inne i vår egen
+usikrede `http://localhost:3000`-side. **Bør IKKE oppstå i produksjon**
+(HTTPS), men er ikke bekreftet — verdt å teste på en ekte HTTPS-deploy før
+man stoler på at Bedrift-flyten er feilfri for sluttkunder. Hvis feilen
+dukker opp igjen i produksjon, undersøk `stripe.confirmPayment()` sitt
+returnerte `error`-objekt nærmere (kode/type), siden vi kun har sett den
+generiske meldingen så langt.
 
 **Fortsatt IKKE gjort:**
-- Bedrift-kunde / PaymentIntentForm (Stripe Elements) — samme oppsett, bare
-  ikke kjørt gjennom ennå.
+- Bekrefte at "A processing error occurred."-symptomet faktisk forsvinner
+  på en ekte HTTPS-deploy (se punkt 8).
 - Faktisk e-postutsending til en ekte kunde-adresse (nå som domenet er
   verifisert) — ikke separat bekreftet at kunden mottar fakturaen på e-post.
 - `tilbudsmoduler.patch`, `extract-patch.ps1`, `apply-and-test.ps1` ligger
