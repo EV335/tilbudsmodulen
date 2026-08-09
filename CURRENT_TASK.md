@@ -311,10 +311,48 @@ generiske meldingen så langt.
 - Faktisk e-postutsending til en ekte kunde-adresse (nå som domenet er
   verifisert) — ikke separat bekreftet at kunden mottar fakturaen på e-post.
 - `tilbudsmoduler.patch`, `extract-patch.ps1`, `apply-and-test.ps1` ligger
-  fortsatt i repoet (sporet, committet). Forsøkte å slette dem 2026-08-09 —
-  **blokkert av auto-mode-klassifisereren** (filsletting av sporede filer
-  krever eksplisitt brukerbekreftelse). Ikke slettet, venter fortsatt på
-  brukerens ok.
+  fortsatt i repoet (sporet, committet). Bruker er enig i å slette dem, men
+  `git rm` er **blokkert av auto-mode-klassifisereren** (filsletting av
+  sporede filer krever at brukeren kjører kommandoen selv — ga brukeren
+  kommandoen `git rm tilbudsmoduler.patch extract-patch.ps1
+  apply-and-test.ps1 && git commit -m "..." && git push`). Ikke bekreftet
+  utført ennå.
+
+### 9. Full nøkkelrotasjon gjennomført — 2026-08-09
+Bruker roterte alle nøkler som hadde ligget eksponert (`env.local`-funnet i
+punkt 4 + limt inn i chatten flere ganger): Supabase `service_role`, Stripe
+secret key, Stripe webhook secret (Dashboard-versjonen), og Resend API-nøkkel.
+
+Viktig arbeidsprinsipp innført underveis: **nye nøkkelverdier limes ALDRI inn
+i chatten** — bruker redigerer `.env.local` direkte selv, og verifisering
+skjer via `curl` mot hver tjenestes API med verdien lest rett fra filen inn i
+en shell-variabel, uten at verdien noensinne skrives ut/vises. Dette bør
+være standard fremgangsmåte for all fremtidig nøkkelhåndtering i dette
+prosjektet.
+
+Underveis oppsto to reelle feil, begge rettet:
+1. Første rotasjonsforsøk "tok ikke" — filen var ikke faktisk lagret (siste
+   endring var fortsatt min egen fra tidligere økt). Løst ved å be bruker
+   bekrefte filsti og faktisk lagre.
+2. Etter lagring: Resend-nøkkelen hadde havnet i `NEXTAUTH_SECRET` ved en
+   feil (så ut som `re_...`), mens `EMAIL_SERVER_PASSWORD` fortsatt hadde den
+   gamle, nå ugyldige nøkkelen. Rettet automatisk (uten å vise verdiene i
+   chatten): flyttet den feilplasserte verdien til `EMAIL_SERVER_PASSWORD`,
+   genererte en ny tilfeldig `NEXTAUTH_SECRET`. Bekreftet med `curl` mot
+   Resend API at nøkkelen nå er gyldig.
+
+`STRIPE_WEBHOOK_SECRET` i `.env.local` er satt tilbake til den lokale
+`stripe listen`-sesjonens egen secret (`whsec_980dc118...`, fortsatt kjørende
+som PID 33000) — IKKE den nye Dashboard-secreten brukeren rullet. Den nye
+Dashboard-secreten er trygt lagret på Stripe sin side og trengs først når en
+ekte produksjons-webhook-endepunkt settes opp.
+
+**Bivirkning (forventet, ikke en feil):** å rotere `NEXTAUTH_SECRET` ugyldig-
+gjorde alle eksisterende innloggingssesjoner (JWT signert med gammel secret
+kan ikke dekrypteres med ny). Bruker må logge inn på nytt.
+
+Alle tre nøkler bekreftet fungerende via direkte API-kall (Stripe
+`/v1/balance`, Resend `/domains`) etter fiksen.
 
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
