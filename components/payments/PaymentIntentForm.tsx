@@ -19,7 +19,7 @@ interface PaymentIntentFormProps {
   onSuccess?: () => void
 }
 
-function BetalingsSkjema({ onSuccess }: { onSuccess?: () => void }) {
+function BetalingsSkjema({ returUrl, onSuccess }: { returUrl: string; onSuccess?: () => void }) {
   const stripe = useStripe()
   const elements = useElements()
   const [status, setStatus] = useState<'idle' | 'betaler' | 'feil'>('idle')
@@ -34,17 +34,42 @@ function BetalingsSkjema({ onSuccess }: { onSuccess?: () => void }) {
 
     const { error } = await stripe.confirmPayment({
       elements,
+      // return_url er påkrevd av Stripe.js for enhver betalingsmetode som må
+      // innom en ekstern side (3D Secure, Klarna, iDEAL m.fl.). PaymentIntenten
+      // opprettes med automatic_payment_methods, så slike metoder KAN dukke opp
+      // — uten denne feiler confirmPayment med en generisk melding.
+      confirmParams: { return_url: returUrl },
+      // Kortbetalinger som går rett gjennom slipper redirect og returnerer her.
       redirect: 'if_required',
     })
 
     if (error) {
-      setFeil(error.message || 'Betaling feilet. Prøv igjen.')
+      // Stripes error.message er ofte generisk ("A processing error occurred.").
+      // Logg type/code i tillegg, ellers er feilen umulig å diagnostisere.
+      console.error('Stripe confirmPayment feilet:', {
+        type: error.type,
+        code: error.code,
+        decline_code: (error as { decline_code?: string }).decline_code,
+        message: error.message,
+      })
+      const detaljer = [error.code, (error as { decline_code?: string }).decline_code]
+        .filter(Boolean)
+        .join(' / ')
+      setFeil(
+        (error.message || 'Betaling feilet. Prøv igjen.') + (detaljer ? ` (${detaljer})` : '')
+      )
       setStatus('feil')
       return
     }
 
-    setStatus('idle')
-    onSuccess?.()
+    // Betalingen gikk gjennom uten redirect. Uten dette sto skjemaet igjen
+    // uendret og kunden fikk ingen bekreftelse — og kunne betalt på nytt.
+    if (onSuccess) {
+      setStatus('idle')
+      onSuccess()
+      return
+    }
+    window.location.href = returUrl
   }
 
   return (
@@ -68,7 +93,14 @@ function BetalingsSkjema({ onSuccess }: { onSuccess?: () => void }) {
 export default function PaymentIntentForm({ invoiceId, token, onSuccess }: PaymentIntentFormProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [feil, setFeil] = useState<string | null>(null)
+  const [returUrl, setReturUrl] = useState<string | null>(null)
   const startetRef = useRef(false)
+
+  // Absolutt URL — Stripe krever det, og window finnes ikke under SSR.
+  useEffect(() => {
+    const sti = token ? `/betal/${token}` : `/historikk/invoices/${invoiceId}`
+    setReturUrl(`${window.location.origin}${sti}?betalt=1`)
+  }, [invoiceId, token])
 
   useEffect(() => {
     // React 18 StrictMode kjører effekter to ganger i dev — uten denne
@@ -101,11 +133,11 @@ export default function PaymentIntentForm({ invoiceId, token, onSuccess }: Payme
     )
   }
   if (feil) return <p className="text-red-600 text-sm">{feil}</p>
-  if (!clientSecret) return <p className="text-black/50 text-sm">Klargjør betaling...</p>
+  if (!clientSecret || !returUrl) return <p className="text-black/50 text-sm">Klargjør betaling...</p>
 
   return (
     <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <BetalingsSkjema onSuccess={onSuccess} />
+      <BetalingsSkjema returUrl={returUrl} onSuccess={onSuccess} />
     </Elements>
   )
 }

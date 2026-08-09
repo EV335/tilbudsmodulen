@@ -18,6 +18,14 @@ export const FAKTURA_STATUS_FARGE: Record<FakturaStatus, string> = {
   cancelled: 'text-black/40',
 }
 
+// Én definisjon for både håndverkerens visning (InvoiceView) og kundens
+// offentlige betalingsside (/betal/[token]) — de to må aldri være uenige om
+// hvorvidt betalingsknappen skal vises.
+// 'failed' er med: et avvist kort skal kunne prøves på nytt med et annet.
+export function kanBetales(status: FakturaStatus): boolean {
+  return status === 'draft' || status === 'pending' || status === 'failed'
+}
+
 export const FAKTURA_STATUS_OPTIONS: { value: FakturaStatus | ''; label: string }[] = [
   { value: '', label: 'Alle statuser' },
   { value: 'draft', label: 'Utkast' },

@@ -6,10 +6,30 @@ import {
   harBehandletStripeEvent,
   lagreBetaling,
   markerFakturaBetalt,
+  markerFakturaFeilet,
 } from '@/lib/payments'
 import { genererLagreOgSendFaktura } from '@/lib/invoice'
 
 export const runtime = 'nodejs'
+
+// Henter fakturaen et Stripe-event gjelder, eller null hvis eventet ikke er
+// vårt. Uten invoiceId i metadata er eventet som regel helt legitimt — Stripe
+// sender f.eks. payment_intent.succeeded ved siden av
+// checkout.session.completed, og session-metadata kopieres IKKE til
+// PaymentIntenten. Det skal derfor ikke logges som en feil.
+async function hentFakturaForEvent(invoiceId: string | undefined, event: Stripe.Event) {
+  if (!invoiceId) {
+    console.log(`Stripe-event ${event.id} (${event.type}) har ingen invoiceId i metadata — hopper over.`)
+    return null
+  }
+
+  const faktura = await hentFakturaById(invoiceId)
+  if (!faktura) {
+    console.error(`Stripe-event ${event.id}: fant ikke faktura ${invoiceId}.`)
+    return null
+  }
+  return faktura
+}
 
 async function behandleInvoiceBetalt(
   invoiceId: string | undefined,
@@ -18,17 +38,11 @@ async function behandleInvoiceBetalt(
   stripeCheckoutSessionId?: string,
   stripePaymentIntentId?: string
 ) {
-  if (!invoiceId) {
-    console.error(`Stripe-event ${event.id} (${event.type}) mangler invoiceId i metadata.`)
-    return
-  }
+  const faktura = await hentFakturaForEvent(invoiceId, event)
+  if (!faktura) return
 
-  const faktura = await hentFakturaById(invoiceId)
-  if (!faktura) {
-    console.error(`Stripe-event ${event.id}: fant ikke faktura ${invoiceId}.`)
-    return
-  }
-
+  // Betalingen registreres uansett — pengene har faktisk beveget seg, og
+  // payments-tabellen er revisjonssporet.
   await lagreBetaling({
     invoiceId: faktura.id,
     userId: faktura.user_id,
@@ -42,6 +56,18 @@ async function behandleInvoiceBetalt(
     rawEvent: event,
   })
 
+  // Var fakturaen allerede betalt, er dette en ny betaling på samme faktura
+  // (to Checkout-sesjoner rukket å bli opprettet før den første ble betalt).
+  // Idempotency-sjekken over fanger ikke dette, siden event-id-ene er ulike.
+  // Da skal vi ikke sende PDF/e-post en gang til — men det må varsles.
+  if (faktura.status === 'paid') {
+    console.error(
+      `VARSEL: faktura ${faktura.invoice_number} var allerede betalt da Stripe-event ${event.id} kom inn. ` +
+        'Mulig dobbeltbetaling — sjekk payments-tabellen og refunder ved behov.'
+    )
+    return
+  }
+
   const betaltFaktura = await markerFakturaBetalt(faktura.id)
 
   try {
@@ -54,6 +80,31 @@ async function behandleInvoiceBetalt(
     // mislyktes. Vi logger i stedet høylytt som et internt varsel.)
     console.error(`VARSEL: faktura ${faktura.invoice_number} er betalt, men PDF/e-post feilet:`, err)
   }
+}
+
+// Avvist kort e.l. Fakturaen settes til 'failed' slik at håndverkeren ser det
+// i oversikten — men den kan fortsatt betales (se kanBetale i InvoiceView og
+// /betal/[token]), for kunden skal kunne prøve igjen med et annet kort.
+async function behandleInvoiceFeilet(event: Stripe.Event, paymentIntent: Stripe.PaymentIntent) {
+  const faktura = await hentFakturaForEvent(paymentIntent.metadata?.invoiceId, event)
+  if (!faktura) return
+
+  await lagreBetaling({
+    invoiceId: faktura.id,
+    userId: faktura.user_id,
+    amount: faktura.amount,
+    currency: faktura.currency,
+    status: 'failed',
+    paymentMethodType: 'payment_intent',
+    stripeEventId: event.id,
+    stripePaymentIntentId: paymentIntent.id,
+    rawEvent: event,
+  })
+
+  // En allerede betalt faktura skal ikke degraderes av et sent feilet forsøk.
+  if (faktura.status === 'paid') return
+
+  await markerFakturaFeilet(faktura.id)
 }
 
 export async function POST(req: NextRequest) {
@@ -96,6 +147,10 @@ export async function POST(req: NextRequest) {
       case 'payment_intent.succeeded': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent
         await behandleInvoiceBetalt(paymentIntent.metadata?.invoiceId, event, 'payment_intent', undefined, paymentIntent.id)
+        break
+      }
+      case 'payment_intent.payment_failed': {
+        await behandleInvoiceFeilet(event, event.data.object as Stripe.PaymentIntent)
         break
       }
       default:

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { Faktura } from '@/lib/payments'
-import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE } from '@/lib/fakturaStatus'
+import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE, kanBetales } from '@/lib/fakturaStatus'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import CheckoutButton from '@/components/payments/CheckoutButton'
@@ -45,7 +45,7 @@ export default function InvoiceView({ faktura: initial }: InvoiceViewProps) {
     }
   }
 
-  const kanBetale = faktura.status === 'pending' || faktura.status === 'draft'
+  const kanBetale = kanBetales(faktura.status)
 
   return (
     <div className="space-y-6">
