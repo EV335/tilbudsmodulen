@@ -433,6 +433,27 @@ nøyaktig feilmodusen vi ville bli kvitt. Idempotens alene løser ingenting her.
 - Bevisst manglende kolonne → `ERROR: P0001: ... kontrollen fanger feil skjema.`
   med `DETAIL: Manglende: customers.denne_kolonnen_finnes_ikke`.
 
+### 13. Firma-lagring og betalingslenke i PDF verifisert — 2026-08-09
+- **Lagre-knappen på `/innstillinger/firma` er nå klikk-testet** (gjenstående
+  punkt fra 11). Testet ordentlig: endret betalingsfrist 14 → 30, lagret,
+  bekreftet i databasen at verdien faktisk ble persistert **og at rad-id-en var
+  den samme** (`ea1867c0…`, altså oppdatering, ikke duplikat) — så
+  `upsert(onConflict: 'user_id')` virker i praksis, ikke bare i teorien. Satte
+  deretter tilbake til 14. GET-veien (utfylling av skjemaet) virker også.
+- **Betalingslenken i faktura-PDF-en er verifisert objektivt**, ikke antatt:
+  opprettet INV-000005 (ubetalt — betalte fakturaer får bevisst en annen tekst
+  uten lenke), trykket "Generer og send", lastet ned PDF-en fra Supabase Storage
+  og pakket ut tekststrømmene. PDF-en inneholder:
+  `Betal enkelt med kort: http://localhost:3000/betal/1eb590ac-…` med token som
+  matcher fakturaraden. Avsender står nå som "Tilbudsmaskinen AS".
+
+**⚠️ Deploy-felle oppdaget:** lenken bygges av `appUrl()` i `lib/invoice.ts`,
+som faller tilbake på `APP_URL` → `NEXTAUTH_URL` → `http://localhost:3000`.
+**Settes ikke `APP_URL` (eller `NEXTAUTH_URL`) ved deploy, vil hver eneste
+faktura-PDF og faktura-e-post sende kunden til `localhost:3000`** — altså en
+død lenke hos kunden, uten noen feilmelding noe sted. Må settes før appen
+brukes utenfor denne maskinen.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -466,9 +487,12 @@ være?) — ikke besvart ennå.
    feilmelding. Krever en HTTPS-deploy for å avgjøre.
 2. **Faktura-e-post til en ekte kundeadresse** — domenet er verifisert på Resend
    og `EMAIL_FROM` er byttet til `noreply@tilbudsmaskinen.no`, men det er ikke
-   bekreftet at en kunde med annen adresse enn `tilbudsmaskinen.no@gmail.com`
-   faktisk mottar fakturaen. Bekreft også at betalingslenken står i e-posten.
-3. **Lagre-knappen på `/innstillinger/firma`** — aldri klikk-testet (se punkt 11).
+   bekreftet at en kunde med **annen adresse** enn `tilbudsmaskinen.no@gmail.com`
+   faktisk mottar fakturaen. (Betalingslenken i selve PDF-en er derimot
+   verifisert, se punkt 13 — og e-posten bruker samme funksjon.)
+3. ~~Lagre-knappen på `/innstillinger/firma`~~ — klikk-testet, se punkt 13.
+6. **Sett `APP_URL` før deploy** — ellers peker alle betalingslenker i
+   PDF/e-post til `localhost:3000` (se punkt 13).
 4. ~~Migrasjonen `20260808_...sql` er ikke idempotent~~ — **fikset 2026-08-09**
    (`1649204`), se punkt 12.
 5. ~~Rydde bort patch-scriptene~~ — gjort, se `d8bf9df`.
