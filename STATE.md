@@ -55,6 +55,15 @@ eller `token` (offentlig). Lenken legges ved i faktura-e-posten og i PDF-en.
 
 ## Åpne feil / uavklart
 
+0. **Next.js cacher `fetch` — gjelder alle fremtidige ruter uten sesjon.**
+   supabase-js kaller global `fetch`, som Next.js patcher og cacher **til disk**
+   (`.next/cache`) — den overlever server-restart. Alle GET-route-handlers som
+   ikke leser cookies/headers må derfor ha `dynamic = 'force-dynamic'` +
+   `fetchCache = 'force-no-store'`. De innloggede rutene slipper unna kun fordi
+   `getServerSession()` leser cookies. Fikset for `/api/public/invoices/[token]`
+   (kunden så "Utkast" etter å ha betalt, og kunne betalt to ganger) — men
+   fellen står fortsatt der for neste sesjonsløse rute.
+
 1. **"A processing error occurred." i Bedrift-flyten.** Vises i UI-et etter at
    kortet sendes inn — men betalingen går faktisk gjennom hver gang (webhook
    `200`, faktura blir `paid`, PDF generert). Mest sannsynlig Stripe.js sin
@@ -87,28 +96,23 @@ Stripe webhook, Resend). **Nye hemmeligheter limes aldri inn i chatten** —
 bruker redigerer `.env.local` selv, verifisering skjer via `curl` som aldri
 skriver ut verdien.
 
-**Ukommittert arbeid:** hele den offentlige betalingslenken ligger uncommitted
-(`app/api/public/`, `app/betal/`, `migrations/20260809_...sql`, samt endringer i
-`lib/payments.ts`, `lib/invoice.ts`, `InvoiceView.tsx`, `CheckoutButton.tsx`,
-`PaymentIntentForm.tsx`). Migrasjonen er allerede kjørt i Supabase.
+**Offentlig betalingslenke er ferdig og verifisert end-to-end** (INV-000004
+betalt via `/betal/[token]` uten sesjon → webhook `200` → `Betalt` → PDF).
+Committet på branchen `feat/public-payment-link` (`f09a5fd`) og pushet.
+Migrasjonen er kjørt i Supabase. **PR ikke opprettet ennå** — bruker må åpne
+den selv (`gh` er ikke installert):
+https://github.com/EV335/tilbudsmodulen/pull/new/feat/public-payment-link
 
 ## Neste umiddelbare oppgave
 
-**Test den offentlige betalingslenken end-to-end.** Den er bygget, typesjekket
-og bygget rent, og siden rendrer riktig for en allerede betalt faktura — men
-**ingen har betalt via den ennå**. Konkret:
-
-1. Logg inn (magic-link er sendt til `tilbudsmaskinen.no@gmail.com`; lenken må
-   klikkes/limes inn av bruker).
-2. Opprett en ny, ubetalt faktura.
-3. Hent betalingslenken (knappen "Kopier betalingslenke til kunden" på
-   fakturasiden) og åpne `/betal/[token]` **uten innlogging**.
-4. Betal med testkort `4242 4242 4242 4242` → bekreft at webhooken fyrer,
-   fakturaen blir `Betalt`, og PDF genereres.
-5. Bekreft at betalingslenken faktisk står i e-posten kunden mottar.
-
-Deretter: commit alt over på en branch og push (bruker åpner PR selv — `gh`
-er ikke installert).
+1. **Åpne og merge PR-en** over.
+2. **Fyll inn "Mitt firma"** (`/innstillinger/firma`) — det finnes ingen
+   `firma`-rad i databasen ennå, så fakturaer/PDF-er viser "TilbudsMaskinen"
+   som avsender i stedet for det ekte firmanavnet. Rask, men nødvendig før
+   kolleger tester.
+3. **Bekreft at betalingslenken faktisk står i e-posten** kunden mottar
+   (e-post ble sendt for INV-000004, men innholdet er ikke lest/verifisert).
+4. Rydd bort patch-scriptene (punkt 4 under "Åpne feil").
 
 ## Miljø-noter
 
