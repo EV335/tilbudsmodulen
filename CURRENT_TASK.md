@@ -454,6 +454,21 @@ faktura-PDF og faktura-e-post sende kunden til `localhost:3000`** — altså en
 død lenke hos kunden, uten noen feilmelding noe sted. Må settes før appen
 brukes utenfor denne maskinen.
 
+### 14. Faktura-e-post bekreftet visuelt i innboksen — 2026-08-09
+Bruker delte skjermbilder av den faktisk mottatte e-posten for INV-000005:
+- **Avsender: `TilbudsMaskinen <noreply@tilbudsmaskinen.no>`** — altså det
+  verifiserte domenet, ikke `onboarding@resend.dev`. Domenebyttet fungerer.
+- **Landet i Innboks**, ikke spam (magic-link-e-poster havnet i spam tidligere —
+  verdt å følge med på).
+- Emne: "Faktura INV-000005 fra Tilbudsmaskinen AS" — firmanavnet slår gjennom.
+- Brødteksten har betalingslenken som **klikkbar hyperlenke**.
+- PDF-vedlegget åpner og rendrer korrekt: FAKTURA / INV-000005 /
+  Tilbudsmaskinen AS / Fakturers til / beløp / status / betalingsinformasjon.
+
+**Ikke bevist av dette:** mottakeren var fortsatt `tilbudsmaskinen.no@gmail.com`
+(kundens registrerte e-post), så levering til en *annen* adresse er fremdeles
+utestet — se "Gjenstår" punkt 2.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -485,11 +500,14 @@ være?) — ikke besvart ennå.
 1. **Bedrift-flyten på HTTPS** — bekrefte at "A processing error occurred."
    forsvinner (se punkt 8). Betalingen går faktisk gjennom, men kunden ser en
    feilmelding. Krever en HTTPS-deploy for å avgjøre.
-2. **Faktura-e-post til en ekte kundeadresse** — domenet er verifisert på Resend
-   og `EMAIL_FROM` er byttet til `noreply@tilbudsmaskinen.no`, men det er ikke
-   bekreftet at en kunde med **annen adresse** enn `tilbudsmaskinen.no@gmail.com`
-   faktisk mottar fakturaen. (Betalingslenken i selve PDF-en er derimot
-   verifisert, se punkt 13 — og e-posten bruker samme funksjon.)
+2. **Faktura-e-post til en ADRESSE UTENFOR kontoen** — dette er det eneste som
+   gjenstår av e-postsporet. Alt annet er nå bekreftet visuelt (se punkt 14):
+   e-posten kommer frem, fra `noreply@tilbudsmaskinen.no`, i innboks (ikke spam),
+   med klikkbar betalingslenke og korrekt PDF-vedlegg. Men mottakeren var
+   fortsatt `tilbudsmaskinen.no@gmail.com`. Siden domenet nå er verifisert på
+   Resend *bør* sending til vilkårlige adresser fungere — men det er ikke testet.
+   **Rask test:** legg til en kunde med en annen e-postadresse, opprett faktura,
+   trykk "Generer og send".
 3. ~~Lagre-knappen på `/innstillinger/firma`~~ — klikk-testet, se punkt 13.
 6. **Sett `APP_URL` før deploy** — ellers peker alle betalingslenker i
    PDF/e-post til `localhost:3000` (se punkt 13).
