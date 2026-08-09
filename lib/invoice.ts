@@ -3,7 +3,7 @@ import nodemailer from 'nodemailer'
 import { supabase } from '@/lib/supabase'
 import { Faktura, settFakturaPdfUrl } from '@/lib/payments'
 
-interface FirmaInfo {
+export interface FirmaInfo {
   firmanavn: string
   logo_url?: string | null
   orgnr?: string | null
@@ -15,7 +15,15 @@ function formatKr(beløp: number) {
   return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
 }
 
-async function hentFirmaForBruker(userId: string): Promise<FirmaInfo | null> {
+function appUrl(): string {
+  return process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000'
+}
+
+export function fakturaBetalingslenke(faktura: Faktura): string {
+  return `${appUrl()}/betal/${faktura.public_token}`
+}
+
+export async function hentFirmaForBruker(userId: string): Promise<FirmaInfo | null> {
   const { data } = await supabase.from('firma').select('*').eq('user_id', userId).maybeSingle()
   return (data as FirmaInfo) ?? null
 }
@@ -168,14 +176,18 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
     y += 14
   }
 
-  if (faktura.status !== 'paid' && firma?.bankkonto) {
+  if (faktura.status !== 'paid') {
     y += 20
     doc.setFont('helvetica', 'bold')
     doc.text('Betalingsinformasjon', margLeft, y)
     y += 14
     doc.setFont('helvetica', 'normal')
-    doc.text(`Kontonummer: ${firma.bankkonto}`, margLeft, y)
+    doc.text(`Betal enkelt med kort: ${fakturaBetalingslenke(faktura)}`, margLeft, y)
     y += 14
+    if (firma?.bankkonto) {
+      doc.text(`Eller via bank, kontonummer: ${firma.bankkonto}`, margLeft, y)
+      y += 14
+    }
     doc.text(`Merk betalingen med fakturanummer ${faktura.invoice_number}.`, margLeft, y)
   }
 
@@ -222,7 +234,10 @@ export async function sendFakturaEpost(faktura: Faktura, pdfBuffer: Buffer, firm
       from: process.env.EMAIL_FROM,
       to: faktura.kunde.epost,
       subject: `Faktura ${faktura.invoice_number} fra ${firma?.firmanavn || 'TilbudsMaskinen'}`,
-      text: `Hei ${faktura.kunde.navn},\n\nVedlagt finner du faktura ${faktura.invoice_number} på ${formatKr(faktura.amount)}.\n\nMed vennlig hilsen\n${firma?.firmanavn || 'TilbudsMaskinen'}`,
+      text:
+        faktura.status === 'paid'
+          ? `Hei ${faktura.kunde.navn},\n\nVedlagt finner du faktura ${faktura.invoice_number} på ${formatKr(faktura.amount)} — betalt, kvittering vedlagt.\n\nMed vennlig hilsen\n${firma?.firmanavn || 'TilbudsMaskinen'}`
+          : `Hei ${faktura.kunde.navn},\n\nVedlagt finner du faktura ${faktura.invoice_number} på ${formatKr(faktura.amount)}.\n\nBetal enkelt og trygt her: ${fakturaBetalingslenke(faktura)}\n\nMed vennlig hilsen\n${firma?.firmanavn || 'TilbudsMaskinen'}`,
       attachments: [
         {
           filename: `faktura-${faktura.invoice_number}.pdf`,
