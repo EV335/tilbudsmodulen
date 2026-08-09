@@ -3,6 +3,8 @@
 
 # next.js
 /.next/
+# alternativ byggekatalog via NEXT_DIST_DIR (se next.config.js)
+/.next-build/
 /out/
 
 # production
@@ -22,6 +24,3 @@ npm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# lokal historikk-data (demo-lagring)
-/data/tilbud.json

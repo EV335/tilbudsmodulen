@@ -469,6 +469,117 @@ Bruker delte skjermbilder av den faktisk mottatte e-posten for INV-000005:
 (kundens registrerte e-post), så levering til en *annen* adresse er fremdeles
 utestet — se "Gjenstår" punkt 2.
 
+### 15. Full bug-gjennomgang, optimalisering og opprydding — 2026-08-09
+Systematisk gjennomlesing av hele kodebasen (alle 60 kildefiler), ikke bare
+betalingsmodulen. Baseline før arbeidet: `tsc --noEmit` ren.
+
+**Reelle bugs funnet og fikset:**
+
+1. **`PaymentIntentForm` ga ingen tilbakemelding ved vellykket betaling.**
+   `onSuccess` var en valgfri prop som **ingen av de to kallerne**
+   (`InvoiceView`, `/betal/[token]`) faktisk sendte inn. Etter en godkjent
+   kortbetaling uten redirect ble `status` bare satt til `idle` — skjemaet sto
+   igjen uendret med "Betal"-knappen, og kunden kunne betalt på nytt. Nå
+   sendes brukeren til `?betalt=1`-visningen (som allerede fantes på begge
+   sider) hvis ingen `onSuccess` er gitt.
+2. **`confirmPayment()` manglet `return_url`.** PaymentIntenten opprettes med
+   `automatic_payment_methods: { enabled: true }`, så Stripe kan tilby
+   metoder som krever redirect (3D Secure, Klarna, iDEAL). Uten `return_url`
+   feiler `confirmPayment` for alle slike. Dette er **en mulig forklaring på
+   "A processing error occurred."** fra punkt 8 — ikke bevist, men det var en
+   ekte feil uansett. Feilobjektet logges nå med `type`/`code`/`decline_code`,
+   og koden vises i UI-teksten, slik at neste forekomst faktisk kan
+   diagnostiseres (etterspurt i punkt 8).
+3. **Ny PaymentIntent ble opprettet ved HVER visning av betalingsskjemaet.**
+   `useRef`-guarden fra punkt 8 stoppet bare StrictMode-dobling innenfor én
+   sidevisning — hver reload lagde en ny. Ny `klargjorPaymentIntent()` i
+   `lib/payments.ts` gjenbruker en eksisterende intent når status fortsatt er
+   betalbar og beløp/valuta matcher, og kansellerer den hvis beløpet er
+   endret. **Verifisert mot live-databasen:** `stripe_payment_intent_id` på
+   INV-000005 var identisk før og etter reload.
+4. **Webhooken kunne sende faktura-PDF og e-post to ganger.** Idempotency-
+   sjekken er på `stripe_event_id`, men to *ulike* events på samme faktura
+   (to Checkout-sesjoner opprettet før den første ble betalt) har ulike
+   id-er og slapp derfor gjennom. Nå registreres betalingen fortsatt
+   (pengene har jo beveget seg — `payments` er revisjonssporet), men er
+   fakturaen allerede `paid`, logges et høylytt varsel om mulig
+   dobbeltbetaling i stedet for å markere betalt og sende på nytt.
+5. **Webhooken logget `console.error` for helt legitime events.** Stripe
+   sender `payment_intent.succeeded` ved siden av
+   `checkout.session.completed`, og session-metadata kopieres ikke til
+   PaymentIntenten — så hver eneste Checkout-betaling ga en falsk feillinje
+   i loggen. Nedgradert til en informativ `console.log`.
+6. **`payment_intent.payment_failed` ble ikke håndtert i det hele tatt.**
+   `markerFakturaFeilet()` fantes i `lib/payments.ts`, men var død kode — en
+   faktura ble stående `pending` for alltid etter et avvist kort. Nå
+   registreres det feilede forsøket og fakturaen settes `failed`. Viktig
+   detalj: `failed` er lagt til i `kanBetales()` slik at kunden fortsatt kan
+   prøve igjen med et annet kort — ellers hadde et avvist kort **låst**
+   fakturaen.
+7. **`kanBetale` var duplisert** i `InvoiceView` og `/betal/[token]` med hver
+   sin kopi av samme betingelse. Flyttet til `kanBetales()` i
+   `lib/fakturaStatus.ts` — de to visningene kan ikke lenger drifte fra
+   hverandre om hvorvidt betalingsknappen skal vises.
+8. **`/api/public/invoices/[token]` returnerte hele faktura- og firmaraden**
+   til en uinnlogget klient: `user_id`, `customer_id`, `tilbud_id`,
+   `stripe_payment_intent_id`, `stripe_checkout_session_id`, samt
+   håndverkerens org.nr og bankkonto. Erstattet med en whitelistet DTO
+   (`tilOffentligFaktura()`). **Verifisert med curl:** svaret inneholder nå
+   kun fakturanummer, beløp, valuta, status, datoer, PDF-url, kundetype og
+   firmanavn. Ukjent token gir fortsatt 404.
+9. **`/betal/[token]` kunne indekseres av søkemotorer.** Ny
+   `app/betal/layout.tsx` setter `robots: noindex, nofollow`. Lenkene deles
+   på e-post og er uautentiserte — en indeksert betalingslenke ville lagt en
+   kundes faktura åpent ut.
+10. **`/result` krasjet med hvit skjerm** på ødelagt `sessionStorage`
+    (`JSON.parse` uten `try/catch`). **Verifisert i nettleser:** plantet
+    ugyldig JSON, siden viser nå "Ingen beregning funnet" og rydder opp.
+11. **`ResultCard` kalte `/api/firma` uten sesjon.** `/result` er ikke
+    middleware-beskyttet, så et garantert 401-kall fyrte av på hver visning.
+    Gated på `useSession()`.
+12. **Beløpsvalidering i `POST /api/invoices`**: `!amount || amount <= 0`
+    slapp `Infinity` gjennom. Nå `Number.isFinite` + øvre grense.
+
+**`supabase/schema.sql` var den farligste filen i repoet.** Den starter med
+`drop table public.users cascade` — og alt henger på `users` via
+fremmednøkler: `tilbud`, `firma`, `kunder`, `customers`, `invoices`,
+`payments`. Å kjøre den i dag ville slettet **hele databasen inkludert
+betalingshistorikken**, uten advarsel. Filen har nå en DEL -1-vakt som
+avbryter hele skriptet hvis det finnes brukere fra før (SQL Editor kjører alt
+i én transaksjon, så ingenting utføres). Fikset samtidig at `drop trigger ...
+on next_auth.users` feilet i et helt nytt prosjekt (`IF EXISTS` gjelder
+triggeren, ikke tabellen).
+
+**Fjernet "ikke kjør next build mens dev-serveren kjører"-fellen** (punkt 11)
+i stedet for bare å dokumentere den: `next.config.js` har nå
+`distDir: process.env.NEXT_DIST_DIR || '.next'`, så et produksjonsbygg kan
+kjøres side om side med dev-serveren:
+`NEXT_DIST_DIR=.next-build npx next build`.
+
+**Slettede filer:**
+- `DEBUG.json` — en VS Code `launch.json` som lå i repo-roten under feil navn.
+  VS Code leser aldri den stien; `.claude/launch.json` dekker dev-serveren.
+  Ingen referanser til den i koden.
+- `data/` — tom katalog igjen etter demo-JSON-lagringen. `lib/historikk.ts`
+  har vært ren Supabase lenge. Fjernet sammen med `/data/tilbud.json`-linjen
+  i `.gitignore`.
+
+**Dokumentasjon brakt i samsvar med koden:**
+- `.env.local.example` manglet **alle** Stripe-variablene og `APP_URL`. Den
+  som satte opp prosjektet fra malen ville fått en app uten betaling og med
+  døde betalingslenker. Alle fire lagt inn, med deploy-advarselen på `APP_URL`.
+- `docs/payments-setup.md` beskrev `APP_URL` som "strengt tatt valgfri" —
+  direkte feil, det er deploy-fellen fra punkt 13. Omskrevet.
+- `README.md` var fra før betalingsmodulen: beskrev `/innstillinger` som
+  firmaoppsett, nevnte verken fakturaer, kunder, `/betal/[token]` eller
+  Stripe, og påsto at backend var uendret. Skrevet om.
+
+**Verifisering:** `tsc --noEmit` 0 feil. Fullt `next build` rent — 26 ruter,
+24 statiske sider. Live-testing mot dev-serveren av `/betal/[token]`
+(både ubetalt bedrift-faktura med Elements og betalt faktura uten
+betalingsknapp), `/historikk/invoices`, fakturadetalj og `/result` — ingen
+konsollfeil noe sted.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -510,7 +621,14 @@ være?) — ikke besvart ennå.
    trykk "Generer og send".
 3. ~~Lagre-knappen på `/innstillinger/firma`~~ — klikk-testet, se punkt 13.
 6. **Sett `APP_URL` før deploy** — ellers peker alle betalingslenker i
-   PDF/e-post til `localhost:3000` (se punkt 13).
+   PDF/e-post til `localhost:3000` (se punkt 13). Står nå dokumentert både i
+   `.env.local.example` og `docs/payments-setup.md`.
+7. **Slett `env.local`** (uten punktum) — den ligger fortsatt i repo-roten med
+   14 variabler i klartekst. Nøklene i den er **utdaterte** (alle ble rotert i
+   punkt 9), og filen er gitignorert, så den er ikke lenger en akutt lekkasje —
+   men den er en forvirrende duplikat av `.env.local` og bør vekk. Jeg lot den
+   ligge fordi det er en fil du opprettet manuelt:
+   `rm env.local`
 4. ~~Migrasjonen `20260808_...sql` er ikke idempotent~~ — **fikset 2026-08-09**
    (`1649204`), se punkt 12.
 5. ~~Rydde bort patch-scriptene~~ — gjort, se `d8bf9df`.
@@ -531,5 +649,7 @@ men sjekk `%TEMP%\stripe-listen-err.log` hvis webhooks plutselig feiler.
 - Stripe CLI: `C:\Users\event\AppData\Local\Microsoft\WinGet\Packages\Stripe.StripeCli_Microsoft.Winget.Source_8wekyb3d8bbwe\stripe.exe`
 - `stripe listen --forward-to localhost:3000/api/webhooks/stripe` må kjøre for at
   webhooks skal nå lokal dev-server.
-- Ikke kjør `next build` mens dev-serveren kjører — de deler `.next` og det
-  korrupterer den (se punkt 11).
+- ~~Ikke kjør `next build` mens dev-serveren kjører~~ — **løst i punkt 15**.
+  `next.config.js` støtter nå `NEXT_DIST_DIR`, så bygg ved siden av dev med
+  `NEXT_DIST_DIR=.next-build npx next build`. Kjører du `next build` uten den
+  variabelen mens dev står på, korrupteres `.next` fortsatt (se punkt 11).
