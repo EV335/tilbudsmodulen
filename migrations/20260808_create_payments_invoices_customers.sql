@@ -29,7 +29,7 @@ alter table public.firma add column if not exists bankkonto text;
 -- DEL 1: Kunderegister for betaling/fakturering
 -- ----------------------------------------------------------------------------
 
-create table public.customers (
+create table if not exists public.customers (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users(id) on delete cascade,
   type text not null check (type in ('privat', 'bedrift')),
@@ -43,7 +43,7 @@ create table public.customers (
   updated_at timestamptz not null default now()
 );
 
-create index customers_user_id_idx on public.customers (user_id);
+create index if not exists customers_user_id_idx on public.customers (user_id);
 
 -- ----------------------------------------------------------------------------
 -- DEL 2: Fakturanummerering
@@ -62,7 +62,7 @@ $$;
 -- DEL 3: Fakturaer
 -- ----------------------------------------------------------------------------
 
-create table public.invoices (
+create table if not exists public.invoices (
   id uuid primary key default gen_random_uuid(),
   invoice_number text not null unique,
   user_id uuid not null references public.users(id) on delete cascade,
@@ -81,16 +81,16 @@ create table public.invoices (
   updated_at timestamptz not null default now()
 );
 
-create index invoices_user_id_idx on public.invoices (user_id);
-create index invoices_status_idx on public.invoices (status);
-create index invoices_customer_id_idx on public.invoices (customer_id);
-create index invoices_created_at_idx on public.invoices (created_at desc);
+create index if not exists invoices_user_id_idx on public.invoices (user_id);
+create index if not exists invoices_status_idx on public.invoices (status);
+create index if not exists invoices_customer_id_idx on public.invoices (customer_id);
+create index if not exists invoices_created_at_idx on public.invoices (created_at desc);
 
 -- ----------------------------------------------------------------------------
 -- DEL 4: Betalinger (én rad per behandlet Stripe-event — idempotency-grunnlag)
 -- ----------------------------------------------------------------------------
 
-create table public.payments (
+create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
   invoice_id uuid not null references public.invoices(id) on delete cascade,
   user_id uuid not null references public.users(id) on delete cascade,
@@ -105,7 +105,7 @@ create table public.payments (
   created_at timestamptz not null default now()
 );
 
-create index payments_invoice_id_idx on public.payments (invoice_id);
+create index if not exists payments_invoice_id_idx on public.payments (invoice_id);
 
 -- stripe_event_id har allerede en unique-constraint over — det er selve
 -- idempotency-mekanismen. lib/payments.ts sjekker om raden finnes før den
@@ -138,3 +138,74 @@ on conflict (id) do nothing;
 -- men ikke-listbare URL-er. Fakturaer inneholder beløp/kundenavn — for
 -- produksjon med reelle kunder bør dette byttes til en privat bucket med
 -- signerte URL-er. Se docs/payments-setup.md.
+
+-- ----------------------------------------------------------------------------
+-- DEL 7: Sluttkontroll — feiler HØYLYTT hvis skjemaet ikke stemmer
+--
+-- Hvorfor dette finnes: `create table if not exists` over gjør skriptet trygt
+-- å kjøre om igjen, men den har en farlig bakside — finnes tabellen fra før
+-- med et ANNET skjema, hoppes den stille over, skriptet melder "Success", og
+-- appen knekker først senere med kryptiske feil som
+-- "column customers.user_id does not exist".
+--
+-- Det skjedde faktisk i dette prosjektet 2026-08-09: Supabase-prosjektet hadde
+-- customers/invoices/payments fra et eldre, ukjent oppsett (norske kolonnenavn:
+-- navn, belop, kunde_id). Migrasjonen så ut til å gå fint, men hele
+-- betalingsmodulen var død.
+--
+-- Denne blokken sammenligner faktisk skjema mot det koden forventer og kaster
+-- en tydelig feil som sier nøyaktig hva som mangler og hva du skal gjøre.
+-- ----------------------------------------------------------------------------
+
+do $$
+declare
+  manglende text[];
+begin
+  select array_agg(format('%s.%s', forventet.tabell, forventet.kolonne)
+                   order by forventet.tabell, forventet.kolonne)
+    into manglende
+  from (values
+    ('customers', 'id'), ('customers', 'user_id'), ('customers', 'type'),
+    ('customers', 'navn'), ('customers', 'epost'), ('customers', 'telefon'),
+    ('customers', 'adresse'), ('customers', 'orgnr'),
+    ('customers', 'stripe_customer_id'), ('customers', 'created_at'),
+    ('customers', 'updated_at'),
+
+    ('invoices', 'id'), ('invoices', 'invoice_number'), ('invoices', 'user_id'),
+    ('invoices', 'tilbud_id'), ('invoices', 'customer_id'), ('invoices', 'amount'),
+    ('invoices', 'currency'), ('invoices', 'status'), ('invoices', 'payment_type'),
+    ('invoices', 'pdf_url'), ('invoices', 'stripe_checkout_session_id'),
+    ('invoices', 'stripe_payment_intent_id'), ('invoices', 'due_date'),
+    ('invoices', 'paid_at'), ('invoices', 'created_at'), ('invoices', 'updated_at'),
+
+    ('payments', 'id'), ('payments', 'invoice_id'), ('payments', 'user_id'),
+    ('payments', 'amount'), ('payments', 'currency'), ('payments', 'status'),
+    ('payments', 'payment_method_type'), ('payments', 'stripe_event_id'),
+    ('payments', 'stripe_payment_intent_id'),
+    ('payments', 'stripe_checkout_session_id'), ('payments', 'raw_event'),
+    ('payments', 'created_at'),
+
+    ('firma', 'betalingsbetingelser_dager'), ('firma', 'bankkonto')
+  ) as forventet(tabell, kolonne)
+  where not exists (
+    select 1
+    from information_schema.columns k
+    where k.table_schema = 'public'
+      and k.table_name = forventet.tabell
+      and k.column_name = forventet.kolonne
+  );
+
+  if manglende is not null then
+    raise exception 'TilbudsMaskinen-migrasjonen fullførte IKKE riktig.'
+      using
+        detail = 'Disse kolonnene mangler: ' || array_to_string(manglende, ', '),
+        hint = 'Tabellene finnes trolig fra før med et annet skjema, så '
+            || '"create table if not exists" hoppet stille over dem. '
+            || 'Sjekk at tabellene er tomme (select count(*) from public.invoices osv.), '
+            || 'og kjør deretter: drop table if exists public.payments, '
+            || 'public.invoices, public.customers cascade;  — og kjør så denne '
+            || 'filen på nytt.';
+  end if;
+
+  raise notice 'TilbudsMaskinen: skjema verifisert OK.';
+end $$;
