@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { loadStripe, Stripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import Button from '@/components/ui/Button'
@@ -65,9 +65,15 @@ function BetalingsSkjema({ onSuccess }: { onSuccess?: () => void }) {
 export default function PaymentIntentForm({ invoiceId, onSuccess }: PaymentIntentFormProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [feil, setFeil] = useState<string | null>(null)
+  const startetRef = useRef(false)
 
   useEffect(() => {
-    let aktiv = true
+    // React 18 StrictMode kjører effekter to ganger i dev — uten denne
+    // guarden opprettet vi to separate PaymentIntents (og potensielt to
+    // Stripe-kunder) per sidevisning.
+    if (startetRef.current) return
+    startetRef.current = true
+
     fetch('/api/payments/create-payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -76,14 +82,11 @@ export default function PaymentIntentForm({ invoiceId, onSuccess }: PaymentInten
       .then(async (res) => {
         const data = await res.json()
         if (!res.ok) throw new Error(data.error || 'Klarte ikke å starte betaling.')
-        if (aktiv) setClientSecret(data.clientSecret)
+        setClientSecret(data.clientSecret)
       })
       .catch((err) => {
-        if (aktiv) setFeil(err instanceof Error ? err.message : 'Noe gikk galt.')
+        setFeil(err instanceof Error ? err.message : 'Noe gikk galt.')
       })
-    return () => {
-      aktiv = false
-    }
   }, [invoiceId])
 
   if (!stripePromise) {
