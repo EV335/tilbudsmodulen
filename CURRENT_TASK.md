@@ -229,13 +229,58 @@ feil — bekreftet med skjermbilde av Table Editor: `customers`, `invoices`,
 eksisterende tabellene (`accounts`, `sessions`, `tilbud`, `kunder`, `users`,
 `verification_tokens`). Databasen er nå klar for betalingsmodulen.
 
-**Fortsatt IKKE gjort — krever ting jeg ikke har tilgang til herfra:**
-- **Ikke faktisk logget inn og klikket gjennom betalingsflytene** (opprette
-  kunde → opprette faktura → "Betal nå"/Stripe Elements → webhook → PDF).
-  Innlogging går via ekte magic-link-e-post (nå med ekte Resend-nøkkel) — jeg
-  har ingen tilgang til innboksen for å klikke lenken. Krever også
-  `stripe listen --forward-to localhost:3000/api/webhooks/stripe` kjørende i
-  en egen terminal for at webhooken skal nå lokal dev-server i det hele tatt.
+### 7. ✅ Full golden path kjørt og bekreftet — 2026-08-09
+Brukeren logget inn via ekte magic-link (klikket selv i egen nettleser, delte
+lenken slik at jeg kunne følge den i min egen). Underveis dukket det opp to
+uavhengige, tidligere ukjente problemer, begge løst:
+
+**Migrasjonen hadde faktisk ikke kjørt riktig.** Da jeg testet `/kunder` fikk
+jeg `column customers.user_id does not exist` — verifiserte direkte mot
+Supabase REST API (service_role-nøkkel, forbi appen) at de live tabellene
+`customers`/`invoices`/`payments` hadde et **helt tredje skjema** (delvis
+norske kolonnenavn: `navn`, `epost`, `belop`, `valuta`, `kunde_id`,
+`stripe_event`) som ikke finnes definert noe sted i repoet — sannsynligvis
+fra et enda eldre, ukjent oppsett. Siden migrasjonens `create table`-
+setninger for disse tre tabellene mangler `IF NOT EXISTS`, feilet de trolig
+stille mens resten av scriptet (firma-alter, storage-bucket) gikk gjennom,
+som ga inntrykk av en vellykket kjøring. Bekreftet tabellene var tomme (0
+rader) via REST, ba bruker kjøre
+`drop table if exists public.payments, public.invoices, public.customers cascade;`
+og re-kjøre migrasjonsfilen — verifisert etterpå at live-skjemaet nå matcher
+koden nøyaktig.
+
+**Resend sandbox-begrensningen gjaldt også innlogging**, ikke bare
+fakturautsending som opprinnelig dokumentert — første magic-link-forsøk (med
+den nye Resend-nøkkelen brukeren limte inn) kom aldri frem. Testet ved å
+bytte tilbake til den gamle nøkkelen — den fungerte. Brukeren verifiserte
+samtidig at `tilbudsmaskinen.no`-domenet nå er verifisert på Resend, så
+`EMAIL_FROM` er byttet fra `onboarding@resend.dev` til
+`noreply@tilbudsmaskinen.no` — fakturautsending til ekte kunder skal nå
+fungere uten sandbox-begrensningen (ikke separat verifisert ennå).
+
+**Stripe CLI**: installert via `winget install Stripe.StripeCli`. `stripe
+login` krevde brukerens eksplisitte OAuth-godkjenning (kunne ikke gjøres av
+meg) — fullført via device-auth-flyt. `stripe listen --forward-to
+localhost:3000/api/webhooks/stripe` kjører nå i bakgrunnen (PID kan variere
+mellom økter — se `%TEMP%\stripe-listen-*.log` for output). Webhook-secreten
+fra CLI-en (`whsec_980dc118...`) er ulik dashboard-secreten og er satt i
+`.env.local`.
+
+**Fullstendig verifisert flyt** (Privat-kunde, Checkout-betaling):
+opprettet kunde → opprettet fristående faktura (kr 1500) → "Betal nå" →
+ekte Stripe Checkout-side → betalt med testkort `4242...` → redirect tilbake
+→ webhook mottok 5 Stripe-events (`charge.succeeded`,
+`payment_intent.succeeded`, `checkout.session.completed`,
+`payment_intent.created`, `charge.updated`), alle `200` → faktura markert
+**Betalt**, PDF generert og lastet opp til Supabase Storage, nedlastingslenke
+fungerer. Ingen feil i noe steg. **Bedrift-flyten (PaymentIntentForm/Stripe
+Elements) er IKKE testet ennå** — kun Checkout-flyten (Privat).
+
+**Fortsatt IKKE gjort:**
+- Bedrift-kunde / PaymentIntentForm (Stripe Elements) — samme oppsett, bare
+  ikke kjørt gjennom ennå.
+- Faktisk e-postutsending til en ekte kunde-adresse (nå som domenet er
+  verifisert) — ikke separat bekreftet at kunden mottar fakturaen på e-post.
 - `tilbudsmoduler.patch`, `extract-patch.ps1`, `apply-and-test.ps1` ligger
   fortsatt i repoet (sporet, committet). Forsøkte å slette dem 2026-08-09 —
   **blokkert av auto-mode-klassifisereren** (filsletting av sporede filer
