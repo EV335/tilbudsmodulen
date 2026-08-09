@@ -408,6 +408,31 @@ cookies (curl) og gir `404` på ukjent token. `tsc` og `next build` rene (26 rut
   "Laster...". Løsning: stopp dev-server, `rm -rf .next`, start igjen. Verdt å vite
   neste gang en side henger uten feil i loggen.
 
+### 12. ✅ Migrasjonen gjort idempotent + skjemavakt — 2026-08-09 (`1649204`)
+**Problemet:** `20260808_...sql` kunne ikke kjøres om igjen (`relation already
+exists`), og verre — mot et prosjekt der tabellene fantes fra før med et ANNET
+skjema, gikk resten av skriptet gjennom mens tabellene ble stående feil.
+Editoren meldte "Success", og appen knakk først senere med
+`column customers.user_id does not exist`. Det skjedde faktisk her (punkt 7).
+
+**Viktig innsikt:** å bare legge til `if not exists` ville gjort det **verre**,
+ikke bedre — da blir en tabell med feil skjema *stille* hoppet over, som er
+nøyaktig feilmodusen vi ville bli kvitt. Idempotens alene løser ingenting her.
+
+**Løsningen, to deler:**
+1. `create table if not exists` + `create index if not exists` — skriptet er nå
+   trygt å kjøre om igjen.
+2. **DEL 7, en `do $$`-sluttkontroll** som sammenligner faktisk skjema
+   (`information_schema.columns`) mot de 40 kolonnene koden krever, og kaster
+   `raise exception` med nøyaktig hvilke kolonner som mangler + oppskriften
+   (`drop table ... cascade;` og kjør på nytt). Stille feil er dermed gjort om
+   til en høylytt, handlingsrettet feil.
+
+**Begge veier verifisert mot den levende databasen** (ikke bare antatt):
+- Riktig skjema → skriptet kjører gjennom, "Success", ingen exception.
+- Bevisst manglende kolonne → `ERROR: P0001: ... kontrollen fanger feil skjema.`
+  med `DETAIL: Manglende: customers.denne_kolonnen_finnes_ikke`.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -444,10 +469,8 @@ være?) — ikke besvart ennå.
    bekreftet at en kunde med annen adresse enn `tilbudsmaskinen.no@gmail.com`
    faktisk mottar fakturaen. Bekreft også at betalingslenken står i e-posten.
 3. **Lagre-knappen på `/innstillinger/firma`** — aldri klikk-testet (se punkt 11).
-4. **Migrasjonen `20260808_...sql` er ikke idempotent** — `create table` for
-   `customers`/`invoices`/`payments` mangler `if not exists` og feiler **stille**
-   mot et prosjekt der tabellene finnes fra før (skjedde her, se punkt 7). Bør
-   fikses før den kjøres i et nytt miljø / for en ny bruker.
+4. ~~Migrasjonen `20260808_...sql` er ikke idempotent~~ — **fikset 2026-08-09**
+   (`1649204`), se punkt 12.
 5. ~~Rydde bort patch-scriptene~~ — gjort, se `d8bf9df`.
 
 ## Env-vars
