@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import type { Kunde } from '@/lib/payments'
@@ -15,7 +15,24 @@ function formatKr(beløp: number) {
   return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
 }
 
+// useSearchParams() krever en Suspense-grense for at Next.js skal kunne
+// prerendere ruten (ellers feiler `next build` med
+// "useSearchParams() should be wrapped in a suspense boundary").
 export default function NyFakturaPage() {
+  return (
+    <Suspense
+      fallback={
+        <Section spacing="none" className="py-16 text-center">
+          <p className="text-white/50">Laster...</p>
+        </Section>
+      }
+    >
+      <NyFakturaInnhold />
+    </Suspense>
+  )
+}
+
+function NyFakturaInnhold() {
   const { status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
