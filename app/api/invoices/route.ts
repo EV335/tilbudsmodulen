@@ -57,8 +57,13 @@ export async function POST(req: NextRequest) {
       amount = tilbud.resultat.pris
     }
 
-    if (!amount || amount <= 0) {
+    // Number.isFinite stopper NaN og Infinity — sistnevnte slapp gjennom
+    // `!amount || amount <= 0` og ville truffet Stripe som et ugyldig beløp.
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json({ error: 'Mangler eller ugyldig beløp.' }, { status: 400 })
+    }
+    if (amount > 10_000_000) {
+      return NextResponse.json({ error: 'Beløpet er urealistisk høyt. Sjekk tallet.' }, { status: 400 })
     }
 
     let dueDate = body.dueDate || null

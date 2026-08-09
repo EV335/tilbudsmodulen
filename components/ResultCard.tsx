@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import jsPDF from 'jspdf'
 import { TilbudInput, TilbudResult } from '@/lib/ai'
 import Card from '@/components/ui/Card'
@@ -109,6 +110,7 @@ async function lastNedPdf(tilbudstekst: string, input: TilbudInput, firma: Firma
 }
 
 export default function ResultCard({ resultat, input, tilbudId }: ResultCardProps) {
+  const { status: sessionStatus } = useSession()
   const [visTilbud, setVisTilbud] = useState(false)
   const [tilbudstekst, setTilbudstekst] = useState(resultat.tilbudstekst)
   const [lagretStatus, setLagretStatus] = useState<'idle' | 'lagrer' | 'lagret' | 'feil'>('idle')
@@ -118,11 +120,17 @@ export default function ResultCard({ resultat, input, tilbudId }: ResultCardProp
   const [firma, setFirma] = useState<Firma | null>(null)
 
   useEffect(() => {
+    // /result er ikke middleware-beskyttet (leser kun sessionStorage), så uten
+    // denne sjekken fyrte siden av et /api/firma-kall som garantert svarte 401.
+    if (sessionStatus !== 'authenticated') {
+      setFirma(null)
+      return
+    }
     fetch('/api/firma')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setFirma(data))
       .catch(() => setFirma(null))
-  }, [])
+  }, [sessionStatus])
 
   async function lagreIHistorikk() {
     setLagretStatus('lagrer')

@@ -2,20 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import type { Faktura } from '@/lib/payments'
-import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE } from '@/lib/fakturaStatus'
+import type { OffentligFaktura } from '@/lib/payments'
+import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE, kanBetales } from '@/lib/fakturaStatus'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import CheckoutButton from '@/components/payments/CheckoutButton'
 import PaymentIntentForm from '@/components/payments/PaymentIntentForm'
-
-interface FirmaInfo {
-  firmanavn: string
-  logo_url?: string | null
-}
-
-type OffentligFaktura = Faktura & { firma: FirmaInfo | null }
 
 function formatKr(beløp: number) {
   return `kr ${Math.round(beløp).toLocaleString('nb-NO')},-`
@@ -73,12 +66,12 @@ export default function OffentligBetalingsSide() {
     )
   }
 
-  const kanBetale = faktura.status === 'pending' || faktura.status === 'draft'
+  const kanBetale = kanBetales(faktura.status)
 
   return (
     <Section size="sm" spacing="roomy">
       <div className="mb-8 text-center">
-        {faktura.firma?.firmanavn && <p className="text-white/60 mb-2">{faktura.firma.firmanavn}</p>}
+        {faktura.firmanavn && <p className="text-white/60 mb-2">{faktura.firmanavn}</p>}
         <h1 className="text-3xl md:text-4xl font-black mb-2">Faktura {faktura.invoice_number}</h1>
         {betalt && (
           <p className="text-green-400 font-medium">
@@ -115,7 +108,7 @@ export default function OffentligBetalingsSide() {
         {kanBetale && (
           <Card>
             <div className="text-sm font-bold text-black/50 uppercase tracking-wide mb-4">Betaling</div>
-            {faktura.kunde?.type === 'bedrift' ? (
+            {faktura.kundetype === 'bedrift' ? (
               <PaymentIntentForm token={params.token} />
             ) : (
               <CheckoutButton token={params.token} />

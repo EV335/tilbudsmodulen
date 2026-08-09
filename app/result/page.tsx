@@ -20,7 +20,12 @@ export default function ResultPage() {
   useEffect(() => {
     const raw = sessionStorage.getItem('tilbudsmaskinen:resultat')
     if (raw) {
-      setData(JSON.parse(raw))
+      try {
+        setData(JSON.parse(raw))
+      } catch {
+        // Ødelagt/utdatert innhold i sessionStorage skal ikke gi hvit skjerm.
+        sessionStorage.removeItem('tilbudsmaskinen:resultat')
+      }
     }
     setKlar(true)
   }, [])
