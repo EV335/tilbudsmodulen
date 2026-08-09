@@ -427,11 +427,13 @@ være?) — ikke besvart ennå.
 4. ~~Nøkkelrotasjon~~ — gjennomført, se punkt 9.
 5. ~~Migrasjoner~~ — begge kjørt av bruker (20260808 + 20260809), verifisert mot
    live-skjemaet.
-6. **Fortsatt åpent: slette `tilbudsmoduler.patch`, `extract-patch.ps1`,
-   `apply-and-test.ps1`?** Bruker har sagt ja, men `git rm` blir blokkert av
-   auto-mode-klassifisereren (sletting av sporede filer krever at bruker kjører
-   det selv). Kommando:
-   `git rm tilbudsmoduler.patch extract-patch.ps1 apply-and-test.ps1`
+6. ~~Slette patch-scriptene~~ — **gjort 2026-08-09** (`d8bf9df`).
+   `tilbudsmoduler.patch`, `extract-patch.ps1` og `apply-and-test.ps1` er fjernet
+   fra repoet. Innholdet er fortsatt gjenopprettbart via
+   `git show 933a1dd:<fil>`. Dermed kan ingen lenger kjøre dem ved et uhell og
+   overskrive betalingssystemet med auto-push.
+
+**Ingen åpne spørsmål akkurat nå.**
 
 ## Gjenstår før "ferdig utviklet" (mål: lokalt, klart for kolleger)
 1. **Bedrift-flyten på HTTPS** — bekrefte at "A processing error occurred."
@@ -446,7 +448,7 @@ være?) — ikke besvart ennå.
    `customers`/`invoices`/`payments` mangler `if not exists` og feiler **stille**
    mot et prosjekt der tabellene finnes fra før (skjedde her, se punkt 7). Bør
    fikses før den kjøres i et nytt miljø / for en ny bruker.
-5. Rydde bort patch-scriptene (punkt 6 over).
+5. ~~Rydde bort patch-scriptene~~ — gjort, se `d8bf9df`.
 
 ## Env-vars
 Alle nøkler ligger i `.env.local` (gitignored). Alle eksponerte nøkler er rotert,
