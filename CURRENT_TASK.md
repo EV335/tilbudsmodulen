@@ -822,6 +822,58 @@ det offentlige faktura-API-et leser nå de ekte mva-kolonnene
 Appen bruker fra nå av per-bruker-nummerering — fallback-varselet i
 `nesteFakturanummer()` skal ikke lenger dukke opp i loggen.
 
+### 21. ⚠️ APPEN ER DEPLOYET — 2026-08-12
+
+**Adresse: https://tilbudsmodulen-ev335s-projects.vercel.app**
+
+`tilbudsmodulen.vercel.app` var opptatt av et annet prosjekt, så Vercel ga
+den lengre varianten med team-slug.
+
+**Hvordan det ble gjort:** bruker forsto ikke stegene, så vi gikk gjennom det
+klikk for klikk i deres egen Chrome. Jeg navigerte og fylte ut alt jeg kunne;
+bruker gjorde de to tingene jeg ikke skal gjøre — GitHub-innloggingen (som
+oppretter Vercel-kontoen) og innlimingen av nøklene.
+
+**Nøklene:** `.env.local` ble åpnet i Notepad og limt inn i Vercels Key-felt.
+Vercel deler et helt `.env`-innhold automatisk i separate variabler. Alle 14
+kom inn. Merk at "Import .env"-knappen åpner en filvelger som ikke tok imot en
+innlimt sti — innliming av selve innholdet er veien som virker.
+
+**⚠️ Deployment Protection måtte slås av.** Vercel slår på "Vercel
+Authentication" som standard: alle besøkende ble sendt til en Vercel-innlogging.
+Det ville stoppet kollegaene — og verre, **kundenes betalingsside
+`/betal/[token]` ville vært utilgjengelig**, altså hele betalingsflyten død.
+Slått av under Settings → Deployment Protection (krever at man skriver
+"disable vercel authentication" som bekreftelse). Verifisert etterpå:
+`/` svarer 200 med forsiden.
+
+**Miljøvariabler rettet etter første deploy:**
+- `NEXTAUTH_URL` sto som `http://localhost:3000` fra `.env.local` — satt til
+  vercel-adressen. Uten dette peker magic-link-e-poster til localhost og
+  innlogging er umulig på den deployede appen.
+- `APP_URL` fantes ikke i `.env.local` — lagt til med samme adresse. Uten den
+  peker betalingslenken i hver faktura-PDF og faktura-e-post til localhost.
+
+**Vercel-UI-et er tungt å automatisere.** Verdifeltene er ikke `input`-elementer,
+tastetrykk med `/` i havner i søkefeltet (Vercel bruker `/` som snarvei), og
+lagrede verdier er skrivebeskyttet så de ikke kan leses tilbake for
+verifisering. Bruk heller en git-push for å utløse deploy enn Redeploy-knappen.
+
+## ⚠️ GJENSTÅR FØR KOLLEGAENE INVITERES
+
+1. **Verifiser at siste deploy faktisk har de nye env-variablene.** Sjekk:
+   `curl https://tilbudsmodulen-ev335s-projects.vercel.app/api/auth/providers`
+   — `signinUrl` skal peke på vercel-adressen, ikke localhost. Gjorde den ikke
+   det ved siste sjekk, har ikke redeployen gått gjennom ennå.
+2. **Stripe-webhook mot den nye adressen.** Dashboard → Developers → Webhooks
+   → Add endpoint: `https://tilbudsmodulen-ev335s-projects.vercel.app/api/webhooks/stripe`,
+   events `checkout.session.completed`, `payment_intent.succeeded`,
+   `payment_intent.payment_failed`. `whsec_...` derfra inn i
+   `STRIPE_WEBHOOK_SECRET` i Vercel. **Nå står den lokale `stripe listen`-
+   secreten der, som er ugyldig i produksjon** — kunden betaler, men fakturaen
+   blir aldri markert betalt og ingen PDF sendes.
+3. **Test innlogging på den deployede adressen** før du sender linken videre.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
