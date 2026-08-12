@@ -848,9 +848,13 @@ Slått av under Settings → Deployment Protection (krever at man skriver
 `/` svarer 200 med forsiden.
 
 **Miljøvariabler rettet etter første deploy:**
-- `NEXTAUTH_URL` sto som `http://localhost:3000` fra `.env.local` — satt til
-  vercel-adressen. Uten dette peker magic-link-e-poster til localhost og
-  innlogging er umulig på den deployede appen.
+- `NEXTAUTH_URL` sto som `http://localhost:3000` fra `.env.local`. Første
+  forsøk på å endre verdien gikk ikke gjennom, uten at UI-et sa fra —
+  Vercels lagrede verdier er skrivebeskyttet, så feilen ble først synlig da
+  `/api/auth/providers` fortsatt svarte localhost etter to deploys.
+  **Løst ved å slette variabelen helt.** På Vercel utleder NextAuth adressen
+  fra forespørselen, så den retter seg selv når domenet kobles på senere.
+  **Verifisert:** `signinUrl` og `callbackUrl` peker nå på vercel-adressen.
 - `APP_URL` fantes ikke i `.env.local` — lagt til med samme adresse. Uten den
   peker betalingslenken i hver faktura-PDF og faktura-e-post til localhost.
 
@@ -861,10 +865,10 @@ verifisering. Bruk heller en git-push for å utløse deploy enn Redeploy-knappen
 
 ## ⚠️ GJENSTÅR FØR KOLLEGAENE INVITERES
 
-1. **Verifiser at siste deploy faktisk har de nye env-variablene.** Sjekk:
-   `curl https://tilbudsmodulen-ev335s-projects.vercel.app/api/auth/providers`
-   — `signinUrl` skal peke på vercel-adressen, ikke localhost. Gjorde den ikke
-   det ved siste sjekk, har ikke redeployen gått gjennom ennå.
+1. ~~Verifiser env-variablene~~ — **gjort.** Verifisert mot den deployede
+   appen: forsiden, /logg-inn og kundens /betal/[token] svarer alle 200,
+   det offentlige faktura-API-et returnerer riktig data uten sesjon, ukjent
+   token gir 404, og /kunder redirecter (307) uten innlogging.
 2. **Stripe-webhook mot den nye adressen.** Dashboard → Developers → Webhooks
    → Add endpoint: `https://tilbudsmodulen-ev335s-projects.vercel.app/api/webhooks/stripe`,
    events `checkout.session.completed`, `payment_intent.succeeded`,
