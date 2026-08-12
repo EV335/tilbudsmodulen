@@ -667,6 +667,60 @@ og Next.js leste den aldri.
   (men uuid-baserte) URL-er. Dokumentert som et bevisst valg i migrasjonen —
   for ekte kunder bør det byttes til privat bucket med signerte URL-er.
 
+### 17. Ytelse og brukeropplevelse — 2026-08-09 (etter PR #4)
+Egen runde med bare to spørsmål: hva er tregt, og hva er unødvendig tungvint.
+
+**⚠️ Appen var i praksis ubrukelig på mobil.** Headeren trengte **865 px**
+minimum (målt: logo 167 px + seks lenker + e-postadressen alene på 203 px),
+mot 375 px på en vanlig telefon. Resultatet var sidelengs scroll på hver
+eneste side, og **«Logg ut» lå helt utenfor skjermen** — det var ingen måte å
+logge ut på fra telefon. For en app som skal brukes av håndverkere ute på jobb
+er dette det viktigste enkeltfunnet i hele gjennomgangen.
+**Fiks:** ekte mobilmeny (hamburger under `md`, full nav over), e-posten
+flyttet inn i menyen. Verifisert i 375 px: dokumentbredde = viewport, null
+overflow-elementer, menyen åpner/lukker og inneholder alle sju punkter
+inkludert «Logg ut».
+
+**Sluttkunden fikk håndverkerens meny.** `/betal/[token]` arvet hele
+app-rammen — «Nytt tilbud», «Mine tilbud», «Kunder», «Mitt firma» — til en
+person som ikke har konto og aldri får bruk for dem, pluss en «Logg inn»-lenke
+rett inn i en blindvei. `AppLayout` renderer nå bare innholdet for `/betal/*`.
+Verifisert: siden har verken header eller footer, og **null interne lenker**.
+
+**Knapper som ikke var lesbare.** `variant="secondary"` var hvit tekst på
+`bg-white/10` — laget for den mørke sidebakgrunnen, men brukt inne i de lyse
+kortene seks av åtte steder. Målt kontrast **1.1** mot kortbakgrunnen, der
+WCAG AA krever 4.5. «Last ned PDF», «Send på nytt», «Kopier betalingslenke»
+og «Kanseller faktura» var alle i praksis usynlige. Varianten er nå navngitt
+etter underlaget (`secondary` = lyst kort, `secondaryDark` = mørk bakgrunn).
+Målt etterpå: **14.16**. Fylte varianter fikk `border-2 border-transparent` så
+høyden matcher, ellers ble «Lagre» og «Avbryt» 4 px ulike.
+
+**`/result` var appens tyngste side med god margin** — 238 kB First Load JS,
+fordi hele jsPDF lå i startbunten for en knapp de fleste aldri trykker. Nå
+`await import('jspdf')` inne i nedlastingshandleren: **238 kB → 108 kB**.
+
+**Kunder kunne ikke redigeres eller slettes** (flagget i punkt 16). Ny
+`PATCH`/`DELETE /api/customers/[id]` og inline redigering i `/kunder`. Sletting
+av en kunde som har fakturaer gir 409 med forklaring i stedet for en rå
+databasefeil — verifisert mot live-basen at constrainten faktisk gir `23503`.
+Begge rutene svarer 401 uten sesjon. **Ikke klikk-testet i UI**: sesjonen gikk
+tapt da dev-serveren startet på nytt, og ny innlogging krever magic-link.
+
+**Mindre:**
+- `/historikk/invoices/ny` lastet ned **hele** tilbudshistorikken for å finne
+  ett tilbud med `.find()` på klienten. Ny `GET /api/tilbud/[id]`.
+- `/api/firma` ble hentet to ganger på `/result` (headeren + ResultCard). Ny
+  `FirmaProvider` deler resultatet.
+- Tilbudskortene i historikken var klikkbare `div`-er med en lenke og en knapp
+  nøstet inni — umulig å nå med tastatur. Nå er tilbudet en `button` som fyller
+  raden (like stort trykkmål), med handlingene ved siden av.
+- Beløp i fakturalisten brøt til «kr» / «999,-» på mobil.
+
+**Verifisering:** `tsc` 0 feil, `next build` rent (24 sider). Mobil målt i
+375 px iframe for `/`, `/logg-inn`, `/betal/[token]` og `/historikk/invoices`
+— ingen sidelengs scroll noe sted.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige

@@ -99,26 +99,28 @@ export default function HistorikkPage() {
 
       <div className="space-y-3">
         {liste?.map((tilbud) => (
-          <Card
-            key={tilbud.id}
-            padding="md"
-            onClick={() => visTilbud(tilbud)}
-            className="cursor-pointer flex items-center justify-between hover:opacity-90"
-          >
-            <div>
-              <div className="font-bold text-lg">
+          <Card key={tilbud.id} padding="md" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+            {/* Var tidligere et klikkbart <div> rundt hele kortet: umulig å nå
+                med tastatur, og med en lenke og en knapp nøstet inni. Nå er
+                selve tilbudet en knapp som fyller raden — like stort trykkmål,
+                men fokuserbart — og handlingene ligger ved siden av. */}
+            <button
+              type="button"
+              onClick={() => visTilbud(tilbud)}
+              className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
+            >
+              <div className="font-bold text-lg break-words">
                 {tilbud.input.jobbType}
                 {tilbud.input.kundenavn ? ` · ${tilbud.input.kundenavn}` : ''}
               </div>
               <div className="text-sm text-black/50">
                 {tilbud.input.romstorrelseM2} m² · {formatDatoTid(tilbud.opprettet)}
               </div>
-            </div>
-            <div className="flex items-center gap-4">
+            </button>
+            <div className="flex items-center gap-4 shrink-0">
               <div className="text-xl font-black text-blue">{formatKr(tilbud.resultat.pris)}</div>
               <Link
                 href={`/historikk/invoices/ny?tilbudId=${tilbud.id}`}
-                onClick={(e) => e.stopPropagation()}
                 className="text-sm font-medium text-blue hover:underline"
               >
                 Fakturér

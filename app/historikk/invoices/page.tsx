@@ -88,19 +88,23 @@ export default function FakturaOversiktPage() {
 
       <div className="space-y-3">
         {fakturaer?.map((faktura) => (
-          <Link key={faktura.id} href={`/historikk/invoices/${faktura.id}`}>
-            <Card padding="md" className="flex items-center justify-between hover:opacity-90 cursor-pointer">
-              <div>
+          <Link key={faktura.id} href={`/historikk/invoices/${faktura.id}`} className="block">
+            <Card
+              padding="md"
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 hover:opacity-90 cursor-pointer"
+            >
+              <div className="min-w-0">
                 <div className="font-bold text-lg">{faktura.invoice_number}</div>
-                <div className="text-sm text-black/50">
+                <div className="text-sm text-black/50 break-words">
                   {faktura.kunde?.navn ?? 'Ukjent kunde'} · {formatDato(faktura.created_at)}
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 shrink-0">
                 <span className={`text-sm font-bold ${FAKTURA_STATUS_FARGE[faktura.status]}`}>
                   {FAKTURA_STATUS_LABEL[faktura.status]}
                 </span>
-                <div className="text-xl font-black text-blue">{formatKr(faktura.amount)}</div>
+                {/* Uten whitespace-nowrap brøt beløpet til "kr" / "999,-" på mobil. */}
+                <div className="text-xl font-black text-blue whitespace-nowrap">{formatKr(faktura.amount)}</div>
               </div>
             </Card>
           </Link>

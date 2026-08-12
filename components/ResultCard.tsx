@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useSession } from 'next-auth/react'
-import jsPDF from 'jspdf'
+import { useState } from 'react'
 import { TilbudInput, TilbudResult } from '@/lib/ai'
 import { formatKr } from '@/lib/format'
+import { useFirma, type Firma } from '@/components/FirmaProvider'
 import Card from '@/components/ui/Card'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
@@ -13,11 +12,6 @@ interface ResultCardProps {
   resultat: TilbudResult
   input: TilbudInput
   tilbudId?: string
-}
-
-interface Firma {
-  firmanavn: string
-  logo_url?: string | null
 }
 
 async function hentLogoSomDataUrl(url: string): Promise<string | null> {
@@ -45,6 +39,11 @@ function hentBildeStorrelse(dataUrl: string): Promise<{ w: number; h: number } |
 }
 
 async function lastNedPdf(tilbudstekst: string, input: TilbudInput, firma: Firma | null) {
+  // jsPDF lastes først når brukeren faktisk trykker "Last ned PDF". Som statisk
+  // import lå hele biblioteket i startbunten til /result — den var 238 kB First
+  // Load JS, klart tyngst i appen, for en knapp de fleste ikke trykker.
+  const { jsPDF } = await import('jspdf')
+
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const margLeft = 56
   const margRight = 56
@@ -107,27 +106,13 @@ async function lastNedPdf(tilbudstekst: string, input: TilbudInput, firma: Firma
 }
 
 export default function ResultCard({ resultat, input, tilbudId }: ResultCardProps) {
-  const { status: sessionStatus } = useSession()
+  const firma = useFirma()
   const [visTilbud, setVisTilbud] = useState(false)
   const [tilbudstekst, setTilbudstekst] = useState(resultat.tilbudstekst)
   const [lagretStatus, setLagretStatus] = useState<'idle' | 'lagrer' | 'lagret' | 'feil'>('idle')
   const [aktivId, setAktivId] = useState<string | undefined>(tilbudId)
   const [sendtStatus, setSendtStatus] = useState<'idle' | 'sendt'>('idle')
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'lager' | 'feil'>('idle')
-  const [firma, setFirma] = useState<Firma | null>(null)
-
-  useEffect(() => {
-    // /result er ikke middleware-beskyttet (leser kun sessionStorage), så uten
-    // denne sjekken fyrte siden av et /api/firma-kall som garantert svarte 401.
-    if (sessionStatus !== 'authenticated') {
-      setFirma(null)
-      return
-    }
-    fetch('/api/firma')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setFirma(data))
-      .catch(() => setFirma(null))
-  }, [sessionStatus])
 
   async function lagreIHistorikk() {
     setLagretStatus('lagrer')
@@ -203,7 +188,7 @@ export default function ResultCard({ resultat, input, tilbudId }: ResultCardProp
           </Button>
         )}
         <Button
-          variant="secondary"
+          variant="secondaryDark"
           fullWidth
           className="flex-1"
           onClick={lagreIHistorikk}

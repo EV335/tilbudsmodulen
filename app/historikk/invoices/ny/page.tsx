@@ -55,11 +55,11 @@ function NyFakturaInnhold() {
       .catch(() => setKunder([]))
 
     if (tilbudId) {
-      fetch('/api/tilbud')
-        .then((res) => res.json())
-        .then((data: LagretTilbud[]) => {
-          setTilbud(data.find((t) => t.id === tilbudId) ?? null)
-        })
+      // Hentet tidligere HELE tilbudshistorikken og fant ett element med
+      // .find() på klienten — all annen data ble lastet ned til ingen nytte.
+      fetch(`/api/tilbud/${tilbudId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: LagretTilbud | null) => setTilbud(data))
         .catch(() => setTilbud(null))
     }
   }, [status, tilbudId])

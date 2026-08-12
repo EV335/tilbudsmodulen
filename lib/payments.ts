@@ -94,6 +94,51 @@ export async function opprettKunde(userId: string, input: OpprettKundeInput): Pr
   return data as Kunde
 }
 
+export async function oppdaterKunde(
+  userId: string,
+  id: string,
+  input: OpprettKundeInput
+): Promise<Kunde | null> {
+  const { data, error } = await supabase
+    .from('customers')
+    .update({
+      type: input.type,
+      navn: input.navn,
+      epost: input.epost || null,
+      telefon: input.telefon || null,
+      adresse: input.adresse || null,
+      orgnr: input.type === 'bedrift' ? input.orgnr || null : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å oppdatere kunde: ${error.message}`)
+  return data as Kunde | null
+}
+
+// Kaster HarFakturaerError hvis kunden er brukt på en faktura. Det er ikke en
+// feil som skal skjules: invoices.customer_id har `on delete restrict` nettopp
+// fordi en faktura uten kunde ikke gir mening i et regnskap.
+export class KundeHarFakturaerError extends Error {
+  constructor() {
+    super('Kunden har fakturaer og kan ikke slettes.')
+    this.name = 'KundeHarFakturaerError'
+  }
+}
+
+export async function slettKunde(userId: string, id: string): Promise<void> {
+  const { error } = await supabase.from('customers').delete().eq('id', id).eq('user_id', userId)
+
+  // 23503 = foreign_key_violation
+  if ((error as { code?: string } | null)?.code === '23503') {
+    throw new KundeHarFakturaerError()
+  }
+  if (error) throw new Error(`Klarte ikke å slette kunde: ${error.message}`)
+}
+
 // Sikrer at kunden har en Stripe Customer-id. Oppretter i Stripe + lagrer
 // på raden hvis den mangler. Kun intern — går via klargjorPaymentIntent().
 async function hentEllerOpprettStripeCustomerId(kunde: Kunde): Promise<string> {

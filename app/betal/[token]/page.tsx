@@ -118,7 +118,7 @@ export default function OffentligBetalingsSide() {
         </Card>
 
         {faktura.pdf_url && (
-          <Card padding="md" className="flex items-center justify-between gap-4">
+          <Card padding="md" className="flex flex-wrap items-center justify-between gap-4">
             <span className="font-medium">Faktura-PDF</span>
             <Button href={faktura.pdf_url} variant="secondary" size="md">
               Last ned PDF
