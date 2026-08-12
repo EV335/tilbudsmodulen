@@ -11,6 +11,7 @@ import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import Checkbox from '@/components/ui/Checkbox'
 
 // useSearchParams() krever en Suspense-grense for at Next.js skal kunne
 // prerendere ruten (ellers feiler `next build` med
@@ -40,11 +41,22 @@ function NyFakturaInnhold() {
   const [customerId, setCustomerId] = useState('')
   const [manueltBelop, setManueltBelop] = useState('')
   const [dueDate, setDueDate] = useState('')
+  const [mvaSats, setMvaSats] = useState(0)
+  const [mvaInkludert, setMvaInkludert] = useState(false)
   const [status2, setStatus2] = useState<'idle' | 'oppretter' | 'feil'>('idle')
   const [feilmelding, setFeilmelding] = useState<string | null>(null)
 
   useEffect(() => {
     if (status !== 'authenticated') return
+
+    // Firmaets mva-oppsett styrer om avkrysningen i det hele tatt vises.
+    fetch('/api/firma')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        setMvaSats(Number(data?.mva_sats ?? 0))
+        setMvaInkludert(Boolean(data?.mva_inkludert_standard))
+      })
+      .catch(() => setMvaSats(0))
 
     fetch('/api/customers')
       .then((res) => res.json())
@@ -82,6 +94,7 @@ function NyFakturaInnhold() {
           tilbudId: tilbudId || undefined,
           amount: tilbudId ? undefined : Number(manueltBelop),
           dueDate: dueDate || undefined,
+          mvaInkludert,
         }),
       })
       const data = await res.json()
@@ -167,6 +180,20 @@ function NyFakturaInnhold() {
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
         />
+
+        {mvaSats > 0 && (
+          <Checkbox
+            id="mva-inkludert"
+            label={`Beløpet over inkluderer ${mvaSats} % mva`}
+            checked={mvaInkludert}
+            onChange={(e) => setMvaInkludert(e.target.checked)}
+            hint={
+              mvaInkludert
+                ? 'Kunden betaler beløpet som står. Mva bakes ut og spesifiseres på fakturaen.'
+                : `Mva legges på toppen — kunden betaler beløpet pluss ${mvaSats} %.`
+            }
+          />
+        )}
 
         {feilmelding && (
           <div className="text-red-700 bg-red-100 border-2 border-red-300 rounded-md px-4 py-3 font-medium">

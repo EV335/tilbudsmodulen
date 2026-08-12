@@ -1,12 +1,13 @@
 import { jsPDF } from 'jspdf'
 import nodemailer from 'nodemailer'
 import { supabase } from '@/lib/supabase'
-import { Faktura, settFakturaPdfUrl } from '@/lib/payments'
+import { Faktura, settFakturaPdfUrl, fakturaBelop } from '@/lib/payments'
 import { formatKr } from '@/lib/format'
 import { appUrl } from '@/lib/env'
 
 export interface FirmaInfo {
   firmanavn: string
+  mva_sats?: number | null
   logo_url?: string | null
   orgnr?: string | null
   adresse?: string | null
@@ -127,7 +128,9 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
     y += 14
   }
   if (firma?.orgnr) {
-    doc.text(`Org.nr: ${firma.orgnr}`, margLeft, y)
+    // Mva-registrerte foretak skal oppgi org.nr etterfulgt av MVA.
+    const erMvaRegistrert = (firma.mva_sats ?? 0) > 0
+    doc.text(`Org.nr: ${firma.orgnr}${erMvaRegistrert ? ' MVA' : ''}`, margLeft, y)
     y += 14
   }
 
@@ -157,10 +160,26 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
   doc.line(margLeft, y, sideBredde - margRight, y)
   y += 24
 
+  const belop = fakturaBelop(faktura)
+
   doc.setFontSize(11)
+  if (belop.sats > 0) {
+    // Uten spesifisert grunnlag og mva-beløp er fakturaen ikke gyldig for en
+    // mva-registrert utsteder.
+    doc.setFont('helvetica', 'normal')
+    doc.text('Grunnlag', margLeft, y)
+    doc.text(formatKr(belop.grunnlag), sideBredde - margRight, y, { align: 'right' })
+    y += 16
+    doc.text(`Merverdiavgift ${belop.sats} %`, margLeft, y)
+    doc.text(formatKr(belop.mva), sideBredde - margRight, y, { align: 'right' })
+    y += 16
+    doc.setDrawColor(200)
+    doc.line(sideBredde - margRight - 160, y - 6, sideBredde - margRight, y - 6)
+  }
+
   doc.setFont('helvetica', 'bold')
-  doc.text('Beløp', margLeft, y)
-  doc.text(formatKr(faktura.amount), sideBredde - margRight, y, { align: 'right' })
+  doc.text(belop.sats > 0 ? 'Å betale' : 'Beløp', margLeft, y)
+  doc.text(formatKr(belop.total), sideBredde - margRight, y, { align: 'right' })
   y += 20
 
   doc.setFont('helvetica', 'normal')
@@ -245,8 +264,8 @@ export async function sendFakturaEpost(faktura: Faktura, pdfBuffer: Buffer, firm
       subject: `Faktura ${faktura.invoice_number} fra ${firma?.firmanavn || 'TilbudsMaskinen'}`,
       text:
         faktura.status === 'paid'
-          ? `Hei ${faktura.kunde.navn},\n\nVedlagt finner du faktura ${faktura.invoice_number} på ${formatKr(faktura.amount)} — betalt, kvittering vedlagt.\n\nMed vennlig hilsen\n${firma?.firmanavn || 'TilbudsMaskinen'}`
-          : `Hei ${faktura.kunde.navn},\n\nVedlagt finner du faktura ${faktura.invoice_number} på ${formatKr(faktura.amount)}.\n\nBetal enkelt og trygt her: ${fakturaBetalingslenke(faktura)}\n\nMed vennlig hilsen\n${firma?.firmanavn || 'TilbudsMaskinen'}`,
+          ? `Hei ${faktura.kunde.navn},\n\nVedlagt finner du faktura ${faktura.invoice_number} på ${formatKr(fakturaBelop(faktura).total)} — betalt, kvittering vedlagt.\n\nMed vennlig hilsen\n${firma?.firmanavn || 'TilbudsMaskinen'}`
+          : `Hei ${faktura.kunde.navn},\n\nVedlagt finner du faktura ${faktura.invoice_number} på ${formatKr(fakturaBelop(faktura).total)}.\n\nBetal enkelt og trygt her: ${fakturaBetalingslenke(faktura)}\n\nMed vennlig hilsen\n${firma?.firmanavn || 'TilbudsMaskinen'}`,
       attachments: [
         {
           filename: `faktura-${faktura.invoice_number}.pdf`,

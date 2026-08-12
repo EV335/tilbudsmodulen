@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { getStripe } from '@/lib/stripe'
+import { beregnMva, type MvaLinjer } from '@/lib/mva'
 
 export type KundeType = 'privat' | 'bedrift'
 
@@ -36,7 +37,18 @@ export interface Faktura {
   paid_at: string | null
   created_at: string
   public_token: string
+  // Snapshot av satsen da fakturaen ble laget — endrer firmaet sats senere,
+  // skal en allerede sendt faktura stå urørt. 0 = ingen mva.
+  mva_sats: number
+  // Om `amount` allerede inneholder mva.
+  mva_inkludert: boolean
   kunde?: Kunde
+}
+
+// Én vei til beløpene — brukt av PDF, UI og beregningen av hva Stripe skal
+// trekke. `total` er det kunden betaler, aldri `amount` direkte.
+export function fakturaBelop(faktura: Faktura): MvaLinjer {
+  return beregnMva(faktura.amount, faktura.mva_sats, faktura.mva_inkludert)
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +237,8 @@ export interface OffentligFaktura {
   // Avgjør om kunden får Stripe Checkout (privat) eller Elements (bedrift).
   kundetype: KundeType | null
   firmanavn: string | null
+  // Kunden skal kunne se hva de betaler mva av.
+  mva: MvaLinjer
 }
 
 export function tilOffentligFaktura(faktura: Faktura, firmanavn: string | null): OffentligFaktura {
@@ -239,6 +253,7 @@ export function tilOffentligFaktura(faktura: Faktura, firmanavn: string | null):
     pdf_url: faktura.pdf_url,
     kundetype: faktura.kunde?.type ?? null,
     firmanavn,
+    mva: fakturaBelop(faktura),
   }
 }
 
@@ -259,6 +274,8 @@ export interface OpprettFakturaInput {
   amount: number
   tilbudId?: string | null
   dueDate?: string | null
+  mvaSats?: number
+  mvaInkludert?: boolean
 }
 
 // Fakturanummer er en egen, fortløpende serie PER bruker — bokføringsforskriften
@@ -298,6 +315,8 @@ export async function opprettFaktura(userId: string, input: OpprettFakturaInput)
       currency: 'nok',
       status: 'draft',
       due_date: input.dueDate || null,
+      mva_sats: input.mvaSats ?? 0,
+      mva_inkludert: input.mvaInkludert ?? false,
     })
     .select('*, kunde:customers(*)')
     .single()
@@ -353,7 +372,8 @@ export async function klargjorPaymentIntent(faktura: Faktura): Promise<string> {
   if (!faktura.kunde) throw new Error('Fakturaen mangler kundeinformasjon.')
 
   const stripe = getStripe()
-  const belopIOre = Math.round(faktura.amount * 100)
+  // Total, ikke amount: legges mva på toppen, er totalen det kunden skylder.
+  const belopIOre = Math.round(fakturaBelop(faktura).total * 100)
 
   if (faktura.stripe_payment_intent_id) {
     try {

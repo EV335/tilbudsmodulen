@@ -32,7 +32,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = (await req.json()) as { customerId?: string; tilbudId?: string; amount?: number; dueDate?: string }
+    const body = (await req.json()) as {
+      customerId?: string
+      tilbudId?: string
+      amount?: number
+      dueDate?: string
+      mvaInkludert?: boolean
+    }
 
     if (!body.customerId) {
       return NextResponse.json({ error: 'Mangler customerId.' }, { status: 400 })
@@ -66,24 +72,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Beløpet er urealistisk høyt. Sjekk tallet.' }, { status: 400 })
     }
 
+    // Ett oppslag — firmaet styrer både forfallsfrist og mva-sats.
+    const { data: firma } = await supabase
+      .from('firma')
+      .select('betalingsbetingelser_dager, mva_sats, mva_inkludert_standard')
+      .eq('user_id', session.user.id)
+      .maybeSingle()
+
     let dueDate = body.dueDate || null
     if (!dueDate) {
-      const { data: firma } = await supabase
-        .from('firma')
-        .select('betalingsbetingelser_dager')
-        .eq('user_id', session.user.id)
-        .maybeSingle()
       const dager = firma?.betalingsbetingelser_dager ?? 14
       const forfall = new Date()
       forfall.setDate(forfall.getDate() + dager)
       dueDate = forfall.toISOString().slice(0, 10)
     }
 
+    // Satsen fryses på fakturaen nå. Endrer firmaet sats senere, skal denne
+    // fakturaen stå urørt — den er allerede sendt til kunden.
+    const mvaSats = Number(firma?.mva_sats ?? 0)
+    const mvaInkludert = body.mvaInkludert ?? Boolean(firma?.mva_inkludert_standard)
+
     const faktura = await opprettFaktura(session.user.id, {
       customerId: kunde.id,
       amount,
       tilbudId,
       dueDate,
+      mvaSats,
+      mvaInkludert,
     })
 
     return NextResponse.json(faktura)

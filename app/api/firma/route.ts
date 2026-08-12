@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
       logoDataUrl?: string
       bankkonto?: string
       betalingsbetingelserDager?: number
+      mvaSats?: number
+      mvaInkludertStandard?: boolean
     }
 
     if (!body.firmanavn) {
@@ -77,6 +79,10 @@ export async function POST(req: NextRequest) {
           adresse: body.adresse || null,
           bankkonto: body.bankkonto || null,
           betalingsbetingelser_dager: body.betalingsbetingelserDager ?? 14,
+          // 0 = ikke mva-registrert. Satsen er selve av/pa-bryteren, sa de to
+          // kan ikke komme i utakt.
+          mva_sats: Math.min(Math.max(Number(body.mvaSats) || 0, 0), 100),
+          mva_inkludert_standard: Boolean(body.mvaInkludertStandard),
           ...(logoUrl ? { logo_url: logoUrl } : {}),
         },
         { onConflict: 'user_id' }

@@ -108,7 +108,14 @@ export default function OffentligBetalingsSide() {
             <div className={`text-lg font-black ${FAKTURA_STATUS_FARGE[faktura.status]}`}>
               {FAKTURA_STATUS_LABEL[faktura.status]}
             </div>
-            <div className="text-3xl font-black text-blue">{formatKr(faktura.amount)}</div>
+            <div className="text-right">
+              <div className="text-3xl font-black text-blue">{formatKr(faktura.mva.total)}</div>
+              {faktura.mva.sats > 0 && (
+                <div className="text-sm text-black/50 mt-1 text-right">
+                  {formatKr(faktura.mva.grunnlag)} + {faktura.mva.sats} % mva
+                </div>
+              )}
+            </div>
           </div>
           <div className="text-black/70 border-t border-black/10 pt-4">
             <div className="text-sm text-black/50">Opprettet {formatDato(faktura.created_at)}</div>

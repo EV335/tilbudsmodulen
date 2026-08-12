@@ -7,6 +7,7 @@ import {
   lagreBetaling,
   markerFakturaBetalt,
   markerFakturaFeilet,
+  fakturaBelop,
 } from '@/lib/payments'
 import { genererLagreOgSendFaktura } from '@/lib/invoice'
 
@@ -52,7 +53,7 @@ async function behandleInvoiceBetalt(
   await lagreBetaling({
     invoiceId: faktura.id,
     userId: faktura.user_id,
-    amount: faktura.amount,
+    amount: fakturaBelop(faktura).total,
     currency: faktura.currency,
     status: 'succeeded',
     paymentMethodType: betalingsType,
@@ -98,7 +99,7 @@ async function behandleInvoiceFeilet(event: Stripe.Event, paymentIntent: Stripe.
   await lagreBetaling({
     invoiceId: faktura.id,
     userId: faktura.user_id,
-    amount: faktura.amount,
+    amount: fakturaBelop(faktura).total,
     currency: faktura.currency,
     status: 'failed',
     paymentMethodType: 'payment_intent',

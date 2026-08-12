@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import type { Faktura, FakturaStatus } from '@/lib/payments'
+import { fakturaBelop, type Faktura, type FakturaStatus } from '@/lib/payments'
 import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE, FAKTURA_STATUS_OPTIONS } from '@/lib/fakturaStatus'
 import { formatKr, formatDato } from '@/lib/format'
 import Section from '@/components/ui/Section'
@@ -104,7 +104,7 @@ export default function FakturaOversiktPage() {
                   {FAKTURA_STATUS_LABEL[faktura.status]}
                 </span>
                 {/* Uten whitespace-nowrap brøt beløpet til "kr" / "999,-" på mobil. */}
-                <div className="text-xl font-black text-blue whitespace-nowrap">{formatKr(faktura.amount)}</div>
+                <div className="text-xl font-black text-blue whitespace-nowrap">{formatKr(fakturaBelop(faktura).total)}</div>
               </div>
             </Card>
           </Link>

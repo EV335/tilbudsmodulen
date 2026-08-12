@@ -760,6 +760,43 @@ og sender e-post før den svarer. Ryker vertens standardgrense underveis, får
 Stripe aldri 200 og prøver igjen — og da stopper idempotency-sjekken forsøk to,
 slik at fakturaen blir stående betalt uten PDF og e-post.
 
+### 19. Merverdiavgift — 2026-08-09
+Bruker valgte: **inkl./eks. mva velges per faktura**, med standardvalg i
+firmaoppsettet, og **ikke mva-registrert i dag** — støtten bygges, men er av
+til den slås på.
+
+**Modell:**
+- `firma.mva_sats` — 0 betyr ikke mva-registrert. Ingen egen boolean: satsen
+  ER av/på-bryteren, så de to kan ikke komme i utakt.
+- `invoices.mva_sats` — **snapshot** av satsen da fakturaen ble laget. Endrer
+  firmaet sats senere, skal en allerede sendt faktura stå urørt.
+- `invoices.mva_inkludert` — om `amount` allerede inneholder mva.
+
+**Alle defaults er 0/false med vilje.** Eksisterende fakturaer får dermed
+`total = amount` — nøyaktig beløpet de allerede krever. Migrasjonen endrer
+ikke hva én eneste eksisterende faktura koster.
+
+**Det viktigste skiftet i koden:** Stripe trekker nå `fakturaBelop(f).total`,
+ikke `f.amount`. Legges mva på toppen er de to ulike, og `amount` ville
+trukket for lite. Samme funksjon brukes av PDF, alle tre visningene og
+`payments`-raden — én kilde, så de ikke kan spa fra hverandre.
+
+**PDF-en** viser nå Grunnlag / Merverdiavgift X % / Å betale når satsen er over
+0, og org.nr får MVA-suffiks — begge deler kreves av en mva-registrert
+utsteder. Uten mva ser fakturaen ut som før.
+
+**Avrunding:** `mva` rundes først, og `total` utledes av grunnlag + mva.
+Regner man total for seg kan linjene bomme med ett øre, og en faktura som ikke
+går opp er en faktura kunden ringer om. **Enhetstestet** (kompilert
+`lib/mva.ts` og kjørt mot syv tilfeller): ingen mva, 25 % på toppen, 25 %
+inkludert, øre-brøk, at grunnlag + mva === total eksakt i begge retninger, og
+at "inkludert" er den eksakte inversen av "på toppen". Alle OK.
+
+**⚠️ `migrations/20260811_mva.sql` MÅ kjøres før den nye koden er i drift** —
+uten `invoices.mva_sats` feiler oppretting av faktura med
+`column "mva_sats" does not exist`. Til forskjell fra nummerering-migrasjonen
+har denne ingen fallback: feilen er høylytt og øyeblikkelig, ikke stille.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige

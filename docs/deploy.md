@@ -8,15 +8,25 @@ en URL, og steg 1 må gjøres før den første kollegaen lager en faktura.
 
 ---
 
-## 1. Kjør migrasjonen (før noen andre logger inn)
+## 1. Kjør migrasjonene (før koden deployes)
 
-I Supabase Dashboard → SQL Editor, kjør:
+I Supabase Dashboard → SQL Editor, kjør begge, i denne rekkefølgen:
 
 ```
 migrations/20260810_per_user_invoice_numbering.sql
+migrations/20260811_mva.sql
 ```
 
-**Hvorfor først:** fakturanummer kom fra én global sekvens for hele
+**Mva-migrasjonen må kjøres før den nye koden er i drift.** Uten
+`invoices.mva_sats` feiler oppretting av faktura med
+`column "mva_sats" does not exist`. Begge skriptene er trygge å kjøre om igjen
+og sier fra høylytt hvis noe er galt.
+
+Mva-migrasjonen endrer ikke hva én eneste eksisterende faktura koster: alle
+defaults er 0/false, så `total = amount` akkurat som før. Mva slås på først når
+du krysser av «Jeg er mva-registrert» i firmaoppsettet.
+
+**Hvorfor nummereringen først:** fakturanummer kom fra én global sekvens for hele
 installasjonen. Med to brukere ville dere fått hver deres hullete serie
 (du: INV-000001, INV-000003 — kollegaen: INV-000002). Bokføringsforskriften
 krever fortløpende nummerering per utsteder. Appen stopper ikke opp uten
@@ -93,6 +103,9 @@ fakturaen blir aldri markert betalt og ingen PDF sendes.
 - [ ] Legg til en kunde med en **ekte e-postadresse utenfor kontoen din** —
       dette er fortsatt utestet, se `CURRENT_TASK.md` punkt 2 under «Gjenstår»
 - [ ] Lag en faktura, trykk «Generer og send», sjekk at e-posten kommer fram
+- [ ] Er du mva-registrert: kryss av i firmaoppsettet, lag en ny faktura og
+      kontroller at PDF-en viser grunnlag, mva-beløp og «Å betale» — og at
+      Stripe trekker totalen, ikke grunnlaget
 - [ ] Åpne betalingslenken i e-posten og kontroller at den peker på den nye
       adressen, ikke localhost
 - [ ] Betal med testkortet, bekreft at fakturaen blir «Betalt»
