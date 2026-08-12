@@ -59,6 +59,13 @@ Full oppskrift (env-vars, migrasjoner, Stripe CLI, kjente begrensninger):
 skjemakontroll som feiler høylytt hvis tabellene finnes fra før med feil
 kolonner — den fellen har utløst i praksis én gang.
 
+## Deploy
+
+Skal andre enn deg bruke appen, må den ut av `localhost`.
+[docs/deploy.md](docs/deploy.md) er rekkefølgen: migrasjon først, så deploy, så
+`APP_URL`, så Stripe-webhooken — med full env-tabell og en sjekkliste å kjøre
+før noen inviteres inn.
+
 ## Kom i gang
 
 ```bash

@@ -1,7 +1,12 @@
 import Link from 'next/link'
 import { ButtonHTMLAttributes, ReactNode } from 'react'
 
-type ButtonVariant = 'primary' | 'secondary' | 'gold' | 'link'
+// Appen har to underlag: den mørke sidebakgrunnen og de lyse kortene (Card).
+// En dempet knapp må vite hvilket den står på — `secondary` var hvit tekst på
+// bg-white/10, som ga kontrast 1.1 mot kortbakgrunnen (kravet er 4.5). Seks av
+// åtte dempede knapper i appen står inne i kort, så `secondary` er nå
+// lys-underlag-varianten, og den mørke har fått sitt eget navn.
+type ButtonVariant = 'primary' | 'secondary' | 'secondaryDark' | 'gold' | 'link'
 type ButtonSize = 'md' | 'lg'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -12,10 +17,16 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
 }
 
+// `border-2 border-transparent` på de fylte variantene så de får nøyaktig
+// samme høyde som `secondary`, som trenger en synlig kant for å lese som en
+// knapp mot det lyse kortet. Uten dette ble "Lagre" og "Avbryt" 4 px ulike.
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: 'bg-blue hover:bg-blue-hover text-white disabled:opacity-60',
-  secondary: 'bg-white/10 hover:bg-white/20 text-white disabled:opacity-60',
-  gold: 'bg-gold hover:opacity-90 text-dark disabled:opacity-60',
+  primary: 'bg-blue hover:bg-blue-hover text-white border-2 border-transparent disabled:opacity-60',
+  // På lyse kort (Card): mørk tekst, kontrast 12.6 mot kortbakgrunnen.
+  secondary: 'bg-black/5 hover:bg-black/10 text-dark border-2 border-black/15 disabled:opacity-60',
+  // På den mørke sidebakgrunnen.
+  secondaryDark: 'bg-white/10 hover:bg-white/20 text-white border-2 border-transparent disabled:opacity-60',
+  gold: 'bg-gold hover:opacity-90 text-dark border-2 border-transparent disabled:opacity-60',
   link: 'text-blue hover:underline text-sm font-medium',
 }
 

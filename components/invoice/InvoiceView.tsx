@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { Faktura } from '@/lib/payments'
+import { fakturaBelop, type Faktura } from '@/lib/payments'
 import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE, kanBetales } from '@/lib/fakturaStatus'
 import { formatKr, formatDato } from '@/lib/format'
 import Card from '@/components/ui/Card'
@@ -63,6 +63,7 @@ export default function InvoiceView({ faktura: initial, ventPaBekreftelse = fals
     }
   }
 
+  const belop = fakturaBelop(faktura)
   const kanBetale = kanBetales(faktura.status) && !ventPaBekreftelse
   // En betalt faktura krediteres/refunderes, den kanselleres ikke.
   const kanKanselleres = faktura.status !== 'paid' && faktura.status !== 'cancelled'
@@ -77,7 +78,14 @@ export default function InvoiceView({ faktura: initial, ventPaBekreftelse = fals
               {FAKTURA_STATUS_LABEL[faktura.status]}
             </div>
           </div>
-          <div className="text-3xl font-black text-blue">{formatKr(faktura.amount)}</div>
+          <div className="text-right">
+            <div className="text-3xl font-black text-blue">{formatKr(belop.total)}</div>
+            {belop.sats > 0 && (
+              <div className="text-sm text-black/50 mt-1 text-right">
+                {formatKr(belop.grunnlag)} + {belop.sats} % mva
+              </div>
+            )}
+          </div>
         </div>
         <div className="text-black/70 border-t border-black/10 pt-4">
           <div className="font-medium">{faktura.kunde?.navn ?? 'Ukjent kunde'}</div>

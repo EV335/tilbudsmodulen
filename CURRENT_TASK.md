@@ -667,6 +667,161 @@ og Next.js leste den aldri.
   (men uuid-baserte) URL-er. Dokumentert som et bevisst valg i migrasjonen —
   for ekte kunder bør det byttes til privat bucket med signerte URL-er.
 
+### 17. Ytelse og brukeropplevelse — 2026-08-09 (etter PR #4)
+Egen runde med bare to spørsmål: hva er tregt, og hva er unødvendig tungvint.
+
+**⚠️ Appen var i praksis ubrukelig på mobil.** Headeren trengte **865 px**
+minimum (målt: logo 167 px + seks lenker + e-postadressen alene på 203 px),
+mot 375 px på en vanlig telefon. Resultatet var sidelengs scroll på hver
+eneste side, og **«Logg ut» lå helt utenfor skjermen** — det var ingen måte å
+logge ut på fra telefon. For en app som skal brukes av håndverkere ute på jobb
+er dette det viktigste enkeltfunnet i hele gjennomgangen.
+**Fiks:** ekte mobilmeny (hamburger under `md`, full nav over), e-posten
+flyttet inn i menyen. Verifisert i 375 px: dokumentbredde = viewport, null
+overflow-elementer, menyen åpner/lukker og inneholder alle sju punkter
+inkludert «Logg ut».
+
+**Sluttkunden fikk håndverkerens meny.** `/betal/[token]` arvet hele
+app-rammen — «Nytt tilbud», «Mine tilbud», «Kunder», «Mitt firma» — til en
+person som ikke har konto og aldri får bruk for dem, pluss en «Logg inn»-lenke
+rett inn i en blindvei. `AppLayout` renderer nå bare innholdet for `/betal/*`.
+Verifisert: siden har verken header eller footer, og **null interne lenker**.
+
+**Knapper som ikke var lesbare.** `variant="secondary"` var hvit tekst på
+`bg-white/10` — laget for den mørke sidebakgrunnen, men brukt inne i de lyse
+kortene seks av åtte steder. Målt kontrast **1.1** mot kortbakgrunnen, der
+WCAG AA krever 4.5. «Last ned PDF», «Send på nytt», «Kopier betalingslenke»
+og «Kanseller faktura» var alle i praksis usynlige. Varianten er nå navngitt
+etter underlaget (`secondary` = lyst kort, `secondaryDark` = mørk bakgrunn).
+Målt etterpå: **14.16**. Fylte varianter fikk `border-2 border-transparent` så
+høyden matcher, ellers ble «Lagre» og «Avbryt» 4 px ulike.
+
+**`/result` var appens tyngste side med god margin** — 238 kB First Load JS,
+fordi hele jsPDF lå i startbunten for en knapp de fleste aldri trykker. Nå
+`await import('jspdf')` inne i nedlastingshandleren: **238 kB → 108 kB**.
+
+**Kunder kunne ikke redigeres eller slettes** (flagget i punkt 16). Ny
+`PATCH`/`DELETE /api/customers/[id]` og inline redigering i `/kunder`. Sletting
+av en kunde som har fakturaer gir 409 med forklaring i stedet for en rå
+databasefeil — verifisert mot live-basen at constrainten faktisk gir `23503`.
+Begge rutene svarer 401 uten sesjon. **Ikke klikk-testet i UI**: sesjonen gikk
+tapt da dev-serveren startet på nytt, og ny innlogging krever magic-link.
+
+**Mindre:**
+- `/historikk/invoices/ny` lastet ned **hele** tilbudshistorikken for å finne
+  ett tilbud med `.find()` på klienten. Ny `GET /api/tilbud/[id]`.
+- `/api/firma` ble hentet to ganger på `/result` (headeren + ResultCard). Ny
+  `FirmaProvider` deler resultatet.
+- Tilbudskortene i historikken var klikkbare `div`-er med en lenke og en knapp
+  nøstet inni — umulig å nå med tastatur. Nå er tilbudet en `button` som fyller
+  raden (like stort trykkmål), med handlingene ved siden av.
+- Beløp i fakturalisten brøt til «kr» / «999,-» på mobil.
+
+**Verifisering:** `tsc` 0 feil, `next build` rent (24 sider). Mobil målt i
+375 px iframe for `/`, `/logg-inn`, `/betal/[token]` og `/historikk/invoices`
+— ingen sidelengs scroll noe sted.
+
+### 18. Klargjort for deploy og kollega-test — 2026-08-09
+Branch `ux/mobil-ytelse-kunderedigering`.
+
+**Erkjennelsen:** hele «Gjenstår»-lista henger på én ting — appen finnes bare
+på `localhost:3000`. Kollegaer kan ikke nå den, HTTPS-spørsmålet (punkt 8) kan
+ikke avgjøres, og `APP_URL` kan ikke settes riktig før appen har en ekte
+adresse. Deploy er ikke ett punkt på lista; det er forutsetningen for resten.
+
+**`docs/deploy.md`** er skrevet som en rekkefølge, ikke en liste: migrasjonen
+først (før bruker nummer to lager sin første faktura), så deploy, så `APP_URL`
+når adressen finnes, så Stripe-webhooken mot den adressen. Med full env-tabell
+og en avkryssingsliste å kjøre før noen inviteres.
+
+**Ny bruker fikk ingen beskjed om firmaoppsett.** En kollega som logger inn har
+ingen `firma`-rad. Ingenting i appen sa fra — og fakturaene deres ville gått ut
+med «TilbudsMaskinen» som avsender i stedet for deres eget firmanavn, uten at
+de oppdaget det før kunden hadde fått den. Nå vises et gult varsel med lenke til
+firmaoppsettet, skjult på selve innstillingssiden. `FirmaProvider` skiller
+«har ikke firma» fra «vet ikke ennå», ellers ville varselet blinket til på hver
+sidelast mens kallet pågikk.
+
+**Miljøvariabler feilet uleselig.** `lib/supabase.ts` og `lib/auth.ts` castet
+`process.env.X as string`. Manglet en av dem på en fersk deploy, feilet bygget
+med `supabaseUrl is required` fra inni supabase-js — uten å si hvilken
+variabel eller hvor den skulle settes. Ny `paakrevdEnv()` i `lib/env.ts`.
+**Verifisert** ved å kjøre `next build` med `SUPABASE_URL` tom:
+`Error: Miljøvariabelen SUPABASE_URL mangler. Se .env.local.example ...`
+
+**`appUrl()` lå i tre identiske kopier** (begge checkout-rutene +
+`lib/invoice.ts`). Den bygger betalingslenken kunden får i PDF og e-post — en
+retting som bare traff to av tre ville vært verre enn ingen. Samlet i
+`lib/env.ts`, og den logger nå et varsel i produksjon hvis verken `APP_URL`
+eller `NEXTAUTH_URL` er satt, i stedet for stille å falle tilbake på localhost.
+
+**`maxDuration = 60` på webhooken.** Den genererer PDF, laster opp til Storage
+og sender e-post før den svarer. Ryker vertens standardgrense underveis, får
+Stripe aldri 200 og prøver igjen — og da stopper idempotency-sjekken forsøk to,
+slik at fakturaen blir stående betalt uten PDF og e-post.
+
+### 19. Merverdiavgift — 2026-08-09
+Bruker valgte: **inkl./eks. mva velges per faktura**, med standardvalg i
+firmaoppsettet, og **ikke mva-registrert i dag** — støtten bygges, men er av
+til den slås på.
+
+**Modell:**
+- `firma.mva_sats` — 0 betyr ikke mva-registrert. Ingen egen boolean: satsen
+  ER av/på-bryteren, så de to kan ikke komme i utakt.
+- `invoices.mva_sats` — **snapshot** av satsen da fakturaen ble laget. Endrer
+  firmaet sats senere, skal en allerede sendt faktura stå urørt.
+- `invoices.mva_inkludert` — om `amount` allerede inneholder mva.
+
+**Alle defaults er 0/false med vilje.** Eksisterende fakturaer får dermed
+`total = amount` — nøyaktig beløpet de allerede krever. Migrasjonen endrer
+ikke hva én eneste eksisterende faktura koster.
+
+**Det viktigste skiftet i koden:** Stripe trekker nå `fakturaBelop(f).total`,
+ikke `f.amount`. Legges mva på toppen er de to ulike, og `amount` ville
+trukket for lite. Samme funksjon brukes av PDF, alle tre visningene og
+`payments`-raden — én kilde, så de ikke kan spa fra hverandre.
+
+**PDF-en** viser nå Grunnlag / Merverdiavgift X % / Å betale når satsen er over
+0, og org.nr får MVA-suffiks — begge deler kreves av en mva-registrert
+utsteder. Uten mva ser fakturaen ut som før.
+
+**Avrunding:** `mva` rundes først, og `total` utledes av grunnlag + mva.
+Regner man total for seg kan linjene bomme med ett øre, og en faktura som ikke
+går opp er en faktura kunden ringer om. **Enhetstestet** (kompilert
+`lib/mva.ts` og kjørt mot syv tilfeller): ingen mva, 25 % på toppen, 25 %
+inkludert, øre-brøk, at grunnlag + mva === total eksakt i begge retninger, og
+at "inkludert" er den eksakte inversen av "på toppen". Alle OK.
+
+**⚠️ `migrations/20260811_mva.sql` MÅ kjøres før den nye koden er i drift** —
+uten `invoices.mva_sats` feiler oppretting av faktura med
+`column "mva_sats" does not exist`. Til forskjell fra nummerering-migrasjonen
+har denne ingen fallback: feilen er høylytt og øyeblikkelig, ikke stille.
+
+### 20. Migrasjonene kjørt mot produksjonsbasen — 2026-08-09
+Kjørt via Supabase SQL Editor i brukerens egen Chrome (Claude har ingen
+DDL-vei: PostgREST er et lag over tabeller og funksjoner, ikke en SQL-konsoll,
+og verken `psql`, Supabase CLI eller databasepassord finnes på maskinen).
+SQL-en ble lagt inn i Monaco-editoren og kjørt mot `main PRODUCTION`.
+
+- `20260810_per_user_invoice_numbering.sql` → Success
+- `20260811_mva.sql` → Success
+
+**Verifisert uavhengig via REST etterpå**, ikke bare på editorens «Success»:
+
+| Sjekk | Resultat |
+|---|---|
+| `invoice_counters` seedet | `neste_nummer = 6` for eksisterende bruker — høyeste faktura er INV-000005, så neste blir INV-000006 uten hull |
+| `next_invoice_number(uuid)` | finnes og kjører (kall med falsk bruker gir FK-feil mot `users`, altså at funksjonen faktisk utfører insertet) |
+| Alle 5 eksisterende fakturaer | `mva_sats = 0`, `mva_inkludert = false` → `total = amount` |
+| `firma` | `mva_sats = 0` — ikke mva-registrert, som valgt |
+
+**Ingen eksisterende faktura endret beløp.** Appen svarer 200 på alle ruter og
+det offentlige faktura-API-et leser nå de ekte mva-kolonnene
+(`"mva":{"sats":0,...}`) i stedet for å degradere.
+
+Appen bruker fra nå av per-bruker-nummerering — fallback-varselet i
+`nesteFakturanummer()` skal ikke lenger dukke opp i loggen.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -694,7 +849,12 @@ være?) — ikke besvart ennå.
 
 **Ingen åpne spørsmål akkurat nå.**
 
-## Gjenstår før "ferdig utviklet" (mål: lokalt, klart for kolleger)
+## Gjenstår før kollega-test
+
+**Alt under henger på deploy — se `docs/deploy.md`. Appen kjører bare på
+localhost, så kollegaene kan ikke nå den, og punkt 1 og 2 kan ikke avgjøres
+før den har en ekte HTTPS-adresse.**
+
 1. **Bedrift-flyten på HTTPS** — bekrefte at "A processing error occurred."
    forsvinner (se punkt 8). Betalingen går faktisk gjennom, men kunden ser en
    feilmelding. Krever en HTTPS-deploy for å avgjøre.
@@ -713,11 +873,7 @@ være?) — ikke besvart ennå.
 7. ~~Slett `env.local`~~ — **gjort i punkt 16.** Nøkkelsettet var identisk med
    `.env.local`, nøklene var utdaterte etter rotasjonen, og Next.js leste
    aldri filen.
-8. **Kjør `migrations/20260810_per_user_invoice_numbering.sql`** i Supabase SQL
-   Editor. Til den er kjørt bruker appen den gamle globale fakturasekvensen og
-   logger et varsel ved hver ny faktura — den stopper ikke opp, men
-   nummerseriene blir hullete så snart bruker nummer to kommer til (se
-   punkt 16).
+8. ~~Kjør migrasjonene~~ — **begge kjørt 2026-08-09** (se punkt 20).
 4. ~~Migrasjonen `20260808_...sql` er ikke idempotent~~ — **fikset 2026-08-09**
    (`1649204`), se punkt 12.
 5. ~~Rydde bort patch-scriptene~~ — gjort, se `d8bf9df`.

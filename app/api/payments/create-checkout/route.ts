@@ -2,12 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
-import { hentFaktura, settFakturaCheckoutSession } from '@/lib/payments'
+import { hentFaktura, settFakturaCheckoutSession, fakturaBelop } from '@/lib/payments'
 import { ikkeBetalbarGrunn } from '@/lib/fakturaStatus'
-
-function appUrl(): string {
-  return process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000'
-}
+import { appUrl } from '@/lib/env'
 
 // Privat-flyt: Stripe-hostet Checkout. Brukes for enkle engangsbetalinger der
 // vi ikke trenger å lagre et betalingsmiddel eller en Stripe Customer.
@@ -32,6 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: ikkeBetalbar }, { status: 400 })
     }
 
+    const belop = fakturaBelop(faktura)
     const stripe = getStripe()
     const base = appUrl()
 
@@ -43,7 +41,9 @@ export async function POST(req: NextRequest) {
           price_data: {
             currency: faktura.currency,
             product_data: { name: `Faktura ${faktura.invoice_number}` },
-            unit_amount: Math.round(faktura.amount * 100),
+            // Totalen, ikke amount — legges mva på toppen er det totalen
+            // kunden skylder. Uten mva er de to like.
+            unit_amount: Math.round(belop.total * 100),
           },
           quantity: 1,
         },

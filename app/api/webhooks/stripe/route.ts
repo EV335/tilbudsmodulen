@@ -7,10 +7,17 @@ import {
   lagreBetaling,
   markerFakturaBetalt,
   markerFakturaFeilet,
+  fakturaBelop,
 } from '@/lib/payments'
 import { genererLagreOgSendFaktura } from '@/lib/invoice'
 
 export const runtime = 'nodejs'
+
+// Webhooken genererer PDF, laster den opp til Storage og sender e-post før den
+// svarer. Ryker vertens standardgrense underveis, får Stripe aldri 200 og
+// prøver igjen — og da stopper idempotency-sjekken forsøk to, slik at fakturaen
+// blir stående betalt UTEN PDF og e-post.
+export const maxDuration = 60
 
 // Henter fakturaen et Stripe-event gjelder, eller null hvis eventet ikke er
 // vårt. Uten invoiceId i metadata er eventet som regel helt legitimt — Stripe
@@ -46,7 +53,7 @@ async function behandleInvoiceBetalt(
   await lagreBetaling({
     invoiceId: faktura.id,
     userId: faktura.user_id,
-    amount: faktura.amount,
+    amount: fakturaBelop(faktura).total,
     currency: faktura.currency,
     status: 'succeeded',
     paymentMethodType: betalingsType,
@@ -92,7 +99,7 @@ async function behandleInvoiceFeilet(event: Stripe.Event, paymentIntent: Stripe.
   await lagreBetaling({
     invoiceId: faktura.id,
     userId: faktura.user_id,
-    amount: faktura.amount,
+    amount: fakturaBelop(faktura).total,
     currency: faktura.currency,
     status: 'failed',
     paymentMethodType: 'payment_intent',

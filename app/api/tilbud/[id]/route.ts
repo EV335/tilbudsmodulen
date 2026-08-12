@@ -1,8 +1,26 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { oppdaterTilbud, slettTilbud } from '@/lib/historikk'
+import { hentTilbud, oppdaterTilbud, slettTilbud } from '@/lib/historikk'
 import { TilbudInput, TilbudResult } from '@/lib/ai'
+
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    const tilbud = await hentTilbud(session.user.id, params.id)
+    if (!tilbud) {
+      return NextResponse.json({ error: 'Fant ikke tilbud.' }, { status: 404 })
+    }
+    return NextResponse.json(tilbud)
+  } catch (err) {
+    console.error('Feil i GET /api/tilbud/[id]:', err)
+    return NextResponse.json({ error: 'Klarte ikke å hente tilbud.' }, { status: 500 })
+  }
+}
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)

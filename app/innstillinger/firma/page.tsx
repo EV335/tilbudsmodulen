@@ -6,6 +6,7 @@ import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import Checkbox from '@/components/ui/Checkbox'
 
 interface Firma {
   firmanavn: string
@@ -14,6 +15,8 @@ interface Firma {
   logo_url?: string | null
   bankkonto?: string | null
   betalingsbetingelser_dager?: number | null
+  mva_sats?: number | null
+  mva_inkludert_standard?: boolean | null
 }
 
 export default function InnstillingerFirmaPage() {
@@ -23,6 +26,9 @@ export default function InnstillingerFirmaPage() {
   const [adresse, setAdresse] = useState('')
   const [bankkonto, setBankkonto] = useState('')
   const [betalingsbetingelserDager, setBetalingsbetingelserDager] = useState('14')
+  const [mvaRegistrert, setMvaRegistrert] = useState(false)
+  const [mvaSats, setMvaSats] = useState('25')
+  const [mvaInkludertStandard, setMvaInkludertStandard] = useState(false)
   const [logoDataUrl, setLogoDataUrl] = useState<string | undefined>(undefined)
   const [eksisterendeLogoUrl, setEksisterendeLogoUrl] = useState<string | null>(null)
   const [lasterInn, setLasterInn] = useState(true)
@@ -45,6 +51,12 @@ export default function InnstillingerFirmaPage() {
           setAdresse(data.adresse ?? '')
           setBankkonto(data.bankkonto ?? '')
           setBetalingsbetingelserDager(String(data.betalingsbetingelser_dager ?? 14))
+          const sats = Number(data.mva_sats ?? 0)
+          setMvaRegistrert(sats > 0)
+          // Beholder 25 i feltet nar satsen er 0, sa avkrysningen gir en
+          // brukbar sats med en gang i stedet for a starte pa null.
+          if (sats > 0) setMvaSats(String(sats))
+          setMvaInkludertStandard(Boolean(data.mva_inkludert_standard))
           setEksisterendeLogoUrl(data.logo_url ?? null)
         }
       })
@@ -73,6 +85,8 @@ export default function InnstillingerFirmaPage() {
           logoDataUrl,
           bankkonto,
           betalingsbetingelserDager: Number(betalingsbetingelserDager) || 14,
+          mvaSats: mvaRegistrert ? Number(mvaSats) || 0 : 0,
+          mvaInkludertStandard,
         }),
       })
       if (!res.ok) throw new Error('Lagring feilet')
@@ -173,6 +187,47 @@ export default function InnstillingerFirmaPage() {
               hint="Standard forfallsdato på nye fakturaer, med mindre annet velges."
             />
           </div>
+        </div>
+
+        <div className="border-t border-black/10 pt-6 space-y-6">
+          <div className="text-sm font-bold text-black/50 uppercase tracking-wide">Merverdiavgift</div>
+
+          <Checkbox
+            id="mva-registrert"
+            label="Jeg er mva-registrert"
+            checked={mvaRegistrert}
+            onChange={(e) => setMvaRegistrert(e.target.checked)}
+            hint="Er du registrert i Merverdiavgiftsregisteret, må fakturaene spesifisere grunnlag og mva-beløp, og org.nr vises med MVA-suffiks."
+          />
+
+          {mvaRegistrert && (
+            <>
+              <Input
+                id="mva-sats"
+                label="Mva-sats (%)"
+                type="number"
+                min="0"
+                max="100"
+                step="any"
+                value={mvaSats}
+                onChange={(e) => setMvaSats(e.target.value)}
+                hint="25 % er standardsatsen for håndverkertjenester."
+              />
+
+              <Checkbox
+                id="mva-inkludert"
+                label="Beløp jeg oppgir inkluderer mva"
+                checked={mvaInkludertStandard}
+                onChange={(e) => setMvaInkludertStandard(e.target.checked)}
+                hint="Standardvalg for nye fakturaer — du kan overstyre det per faktura. Av: mva legges på toppen (vanlig mot bedrift). På: beløpet er det kunden betaler, og mva bakes ut (vanlig mot privatpersoner)."
+              />
+            </>
+          )}
+
+          <p className="text-sm text-black/50">
+            Endrer du satsen senere, påvirker det bare nye fakturaer. Allerede
+            opprettede fakturaer beholder satsen de ble laget med.
+          </p>
         </div>
 
         <Button type="submit" fullWidth disabled={lagrerStatus === 'lagrer'}>

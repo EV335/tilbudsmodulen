@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { getStripe } from '@/lib/stripe'
+import { beregnMva, type MvaLinjer } from '@/lib/mva'
 
 export type KundeType = 'privat' | 'bedrift'
 
@@ -36,7 +37,18 @@ export interface Faktura {
   paid_at: string | null
   created_at: string
   public_token: string
+  // Snapshot av satsen da fakturaen ble laget — endrer firmaet sats senere,
+  // skal en allerede sendt faktura stå urørt. 0 = ingen mva.
+  mva_sats: number
+  // Om `amount` allerede inneholder mva.
+  mva_inkludert: boolean
   kunde?: Kunde
+}
+
+// Én vei til beløpene — brukt av PDF, UI og beregningen av hva Stripe skal
+// trekke. `total` er det kunden betaler, aldri `amount` direkte.
+export function fakturaBelop(faktura: Faktura): MvaLinjer {
+  return beregnMva(faktura.amount, faktura.mva_sats, faktura.mva_inkludert)
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +104,51 @@ export async function opprettKunde(userId: string, input: OpprettKundeInput): Pr
 
   if (error) throw new Error(`Klarte ikke å opprette kunde: ${error.message}`)
   return data as Kunde
+}
+
+export async function oppdaterKunde(
+  userId: string,
+  id: string,
+  input: OpprettKundeInput
+): Promise<Kunde | null> {
+  const { data, error } = await supabase
+    .from('customers')
+    .update({
+      type: input.type,
+      navn: input.navn,
+      epost: input.epost || null,
+      telefon: input.telefon || null,
+      adresse: input.adresse || null,
+      orgnr: input.type === 'bedrift' ? input.orgnr || null : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) throw new Error(`Klarte ikke å oppdatere kunde: ${error.message}`)
+  return data as Kunde | null
+}
+
+// Kaster HarFakturaerError hvis kunden er brukt på en faktura. Det er ikke en
+// feil som skal skjules: invoices.customer_id har `on delete restrict` nettopp
+// fordi en faktura uten kunde ikke gir mening i et regnskap.
+export class KundeHarFakturaerError extends Error {
+  constructor() {
+    super('Kunden har fakturaer og kan ikke slettes.')
+    this.name = 'KundeHarFakturaerError'
+  }
+}
+
+export async function slettKunde(userId: string, id: string): Promise<void> {
+  const { error } = await supabase.from('customers').delete().eq('id', id).eq('user_id', userId)
+
+  // 23503 = foreign_key_violation
+  if ((error as { code?: string } | null)?.code === '23503') {
+    throw new KundeHarFakturaerError()
+  }
+  if (error) throw new Error(`Klarte ikke å slette kunde: ${error.message}`)
 }
 
 // Sikrer at kunden har en Stripe Customer-id. Oppretter i Stripe + lagrer
@@ -180,6 +237,8 @@ export interface OffentligFaktura {
   // Avgjør om kunden får Stripe Checkout (privat) eller Elements (bedrift).
   kundetype: KundeType | null
   firmanavn: string | null
+  // Kunden skal kunne se hva de betaler mva av.
+  mva: MvaLinjer
 }
 
 export function tilOffentligFaktura(faktura: Faktura, firmanavn: string | null): OffentligFaktura {
@@ -194,6 +253,7 @@ export function tilOffentligFaktura(faktura: Faktura, firmanavn: string | null):
     pdf_url: faktura.pdf_url,
     kundetype: faktura.kunde?.type ?? null,
     firmanavn,
+    mva: fakturaBelop(faktura),
   }
 }
 
@@ -214,6 +274,8 @@ export interface OpprettFakturaInput {
   amount: number
   tilbudId?: string | null
   dueDate?: string | null
+  mvaSats?: number
+  mvaInkludert?: boolean
 }
 
 // Fakturanummer er en egen, fortløpende serie PER bruker — bokføringsforskriften
@@ -253,6 +315,8 @@ export async function opprettFaktura(userId: string, input: OpprettFakturaInput)
       currency: 'nok',
       status: 'draft',
       due_date: input.dueDate || null,
+      mva_sats: input.mvaSats ?? 0,
+      mva_inkludert: input.mvaInkludert ?? false,
     })
     .select('*, kunde:customers(*)')
     .single()
@@ -308,7 +372,8 @@ export async function klargjorPaymentIntent(faktura: Faktura): Promise<string> {
   if (!faktura.kunde) throw new Error('Fakturaen mangler kundeinformasjon.')
 
   const stripe = getStripe()
-  const belopIOre = Math.round(faktura.amount * 100)
+  // Total, ikke amount: legges mva på toppen, er totalen det kunden skylder.
+  const belopIOre = Math.round(fakturaBelop(faktura).total * 100)
 
   if (faktura.stripe_payment_intent_id) {
     try {

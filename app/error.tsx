@@ -17,7 +17,7 @@ export default function Error({ error, reset }: { error: Error; reset: () => voi
         <Button size="md" onClick={reset}>
           Prøv igjen
         </Button>
-        <Button href="/" variant="secondary" size="md">
+        <Button href="/" variant="secondaryDark" size="md">
           Gå til forsiden
         </Button>
       </div>
