@@ -52,8 +52,20 @@ Repoet er et vanlig Next.js-prosjekt uten spesialoppsett. På Vercel:
 2. Framework blir oppdaget automatisk (Next.js). Ikke endre build-kommandoen.
 3. Legg inn miljøvariablene fra tabellen under **før** første deploy.
 
-`.env.local` på din maskin følger *ikke* med — variablene må legges inn hos
-verten. Mangler en av dem, feiler bygget nå med en melding som sier nøyaktig
+**Raskeste vei:** Vercels env-felt tar imot et helt `.env`-innhold i én
+innliming. Åpne `.env.local`, kopier alt, lim inn — og rett så disse tre:
+
+| Variabel | Endres til |
+|---|---|
+| `NEXTAUTH_URL` | den nye adressen (står som localhost i `.env.local`) |
+| `APP_URL` | den nye adressen (finnes ikke i `.env.local` — legg den til) |
+| `STRIPE_WEBHOOK_SECRET` | fra steg 5 (`.env.local` har `stripe listen`-secreten, som ikke gjelder i produksjon) |
+
+`SUPABASE_PUBLISHABLE_KEY` i `.env.local` brukes ikke av appen — den kan bli
+med uten at det gjør noe.
+
+`.env.local` på din maskin følger *ikke* med av seg selv — variablene må legges
+inn hos verten. Mangler en av dem, feiler bygget nå med en melding som sier nøyaktig
 hvilken (`lib/env.ts`), i stedet for `supabaseUrl is required`.
 
 | Variabel | Verdi | Merknad |
