@@ -797,6 +797,31 @@ uten `invoices.mva_sats` feiler oppretting av faktura med
 `column "mva_sats" does not exist`. Til forskjell fra nummerering-migrasjonen
 har denne ingen fallback: feilen er høylytt og øyeblikkelig, ikke stille.
 
+### 20. Migrasjonene kjørt mot produksjonsbasen — 2026-08-09
+Kjørt via Supabase SQL Editor i brukerens egen Chrome (Claude har ingen
+DDL-vei: PostgREST er et lag over tabeller og funksjoner, ikke en SQL-konsoll,
+og verken `psql`, Supabase CLI eller databasepassord finnes på maskinen).
+SQL-en ble lagt inn i Monaco-editoren og kjørt mot `main PRODUCTION`.
+
+- `20260810_per_user_invoice_numbering.sql` → Success
+- `20260811_mva.sql` → Success
+
+**Verifisert uavhengig via REST etterpå**, ikke bare på editorens «Success»:
+
+| Sjekk | Resultat |
+|---|---|
+| `invoice_counters` seedet | `neste_nummer = 6` for eksisterende bruker — høyeste faktura er INV-000005, så neste blir INV-000006 uten hull |
+| `next_invoice_number(uuid)` | finnes og kjører (kall med falsk bruker gir FK-feil mot `users`, altså at funksjonen faktisk utfører insertet) |
+| Alle 5 eksisterende fakturaer | `mva_sats = 0`, `mva_inkludert = false` → `total = amount` |
+| `firma` | `mva_sats = 0` — ikke mva-registrert, som valgt |
+
+**Ingen eksisterende faktura endret beløp.** Appen svarer 200 på alle ruter og
+det offentlige faktura-API-et leser nå de ekte mva-kolonnene
+(`"mva":{"sats":0,...}`) i stedet for å degradere.
+
+Appen bruker fra nå av per-bruker-nummerering — fallback-varselet i
+`nesteFakturanummer()` skal ikke lenger dukke opp i loggen.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -848,11 +873,7 @@ før den har en ekte HTTPS-adresse.**
 7. ~~Slett `env.local`~~ — **gjort i punkt 16.** Nøkkelsettet var identisk med
    `.env.local`, nøklene var utdaterte etter rotasjonen, og Next.js leste
    aldri filen.
-8. **Kjør `migrations/20260810_per_user_invoice_numbering.sql`** i Supabase SQL
-   Editor. Til den er kjørt bruker appen den gamle globale fakturasekvensen og
-   logger et varsel ved hver ny faktura — den stopper ikke opp, men
-   nummerseriene blir hullete så snart bruker nummer to kommer til (se
-   punkt 16).
+8. ~~Kjør migrasjonene~~ — **begge kjørt 2026-08-09** (se punkt 20).
 4. ~~Migrasjonen `20260808_...sql` er ikke idempotent~~ — **fikset 2026-08-09**
    (`1649204`), se punkt 12.
 5. ~~Rydde bort patch-scriptene~~ — gjort, se `d8bf9df`.
