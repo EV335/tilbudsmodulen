@@ -125,6 +125,40 @@ fakturaen blir aldri markert betalt og ingen PDF sendes.
       «A processing error occurred.» lokalt over HTTP, og som først kan
       avgjøres på HTTPS (`CURRENT_TASK.md` punkt 8)
 
+## 6b. Koble til tilbudsmaskinen.no
+
+**Kan ikke gjøres før steg 3–5 er ferdige** — Vercel må ha et prosjekt å knytte
+domenet til, og du trenger adressen for å vite hva DNS skal peke på.
+
+DNS ligger hos **Domeneshop** (nameservere `ns1/ns2/ns3.hyp.net`).
+
+Slik det ser ut i dag:
+
+| Post | Verdi | Hva den gjør |
+|---|---|---|
+| `tilbudsmaskinen.no` A | `185.134.245.113` | Domeneshop-parkering — **denne skal endres** |
+| `tilbudsmaskinen.no` AAAA | `2a01:5b40:0:bc03::1` | samme, **fjernes** (Vercel har ikke IPv6 på apex) |
+| `send.tilbudsmaskinen.no` TXT | `v=spf1 include:amazonses.com ~all` | ⚠️ **IKKE RØR** — Resend/SPF |
+| `send.tilbudsmaskinen.no` MX | `feedback-smtp.eu-west-1.amazonses.com` | ⚠️ **IKKE RØR** — Resend |
+| `resend._domainkey` TXT | DKIM-nøkkel | ⚠️ **IKKE RØR** — Resend |
+
+**Gode nyheter:** all e-postsignering ligger på `send.`- og
+`resend._domainkey`-subdomenene, helt atskilt fra apex. Å peke
+`tilbudsmaskinen.no` mot Vercel rører derfor ikke e-post i det hele tatt —
+verken faktura-utsending eller magic-link-innlogging.
+
+**Rekkefølge:**
+1. Vercel → prosjektet → Settings → Domains → legg til `tilbudsmaskinen.no`
+2. Vercel oppgir hva A-posten skal peke på (normalt `76.76.21.21`)
+3. Domeneshop → DNS for tilbudsmaskinen.no → endre A-posten, slett AAAA-posten
+4. Vent på propagering (minutter til et par timer)
+5. Sett `APP_URL` og `NEXTAUTH_URL` til `https://tilbudsmaskinen.no`, deploy på nytt
+6. Oppdater Stripe-webhookens URL til det nye domenet
+
+**Merk steg 5 og 6:** gjør du dem ikke, fortsetter betalingslenkene å peke på
+vercel.app-adressen, og webhooken står registrert på den gamle URL-en. Begge
+fungerer teknisk, men kunden får en lenke som ikke ser ut som firmaet ditt.
+
 ## 7. Så inviterer du kollegaene
 
 De trenger bare adressen. De logger inn med sin egen e-post, får sin egen
