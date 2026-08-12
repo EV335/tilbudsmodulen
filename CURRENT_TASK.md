@@ -863,19 +863,58 @@ tastetrykk med `/` i havner i søkefeltet (Vercel bruker `/` som snarvei), og
 lagrede verdier er skrivebeskyttet så de ikke kan leses tilbake for
 verifisering. Bruk heller en git-push for å utløse deploy enn Redeploy-knappen.
 
+### 22. ✅ Stripe-webhook satt opp mot produksjon — 2026-08-12
+
+Endepunktet **`tilbudsmaskinen-vercel-prod`** (`we_1U3hPYGmxqihrRSkawIf9plO`)
+opprettet i Stripe Workbench mot
+`https://tilbudsmodulen-ev335s-projects.vercel.app/api/webhooks/stripe`,
+med nøyaktig de tre eventene ruta faktisk håndterer. Ny `whsec_...` limt inn i
+`STRIPE_WEBHOOK_SECRET` i Vercel av bruker (jeg hverken leser eller limer inn
+hemmeligheter), deretter redeploy.
+
+**Verifisert, ikke antatt:** `stripe trigger payment_intent.succeeded` fra
+Workbench-shellen ga **200 OK / Delivered**. Det beviser tre ting på én gang —
+Stripe når fram (ingen Deployment Protection i veien), signaturen verifiseres
+med den nye secreten, og ruta svarer riktig. Med den gamle `stripe listen`-
+secreten ville svaret vært `400 Ugyldig signatur`.
+
+Detaljer verdt å huske:
+
+- **Kontoen er en Stripe *sandbox*** (`acct_1U2D7zGmxqihrRSk`,
+  «TILBUDSMASKINEN sandbox»). Bekreftet via `GET /v1/account` med appens egen
+  nøkkel at det er *samme* konto — ellers hadde webhooken havnet i feil miljø.
+- **Payload style må være «Snapshot», ikke «Thin».**
+  `stripe.webhooks.constructEvent` forventer v1-payloaden.
+- **Vercel: verdien lot seg endre denne gangen.** Punkt 21 sa at lagrede
+  verdier er skrivebeskyttet — det stemmer for *lesing* («Copy to Clipboard» er
+  låst på Sensitive-variabler), men «… → Edit» lar deg skrive en ny verdi.
+  Vercel varsler selv at ny deploy trengs, med Redeploy-knapp i meldingen.
+- **Vercel-UI-et hopper.** Etter Save scroller siden til toppen, så et
+  oppfølgingsklikk på gamle koordinater treffer feil rad — i verste fall en
+  «Delete» i en «…»-meny. Les av siden på nytt før hvert klikk.
+- **Prosjektet har to vercel.app-adresser**: `tilbudsmodulen-one.vercel.app`
+  (den Vercel viser i prosjektlista) og
+  `tilbudsmodulen-ev335s-projects.vercel.app` (den `APP_URL` og webhooken
+  bruker). Begge peker på samme deploy.
+
+**Ryddet samtidig:** to eldre event-destinasjoner pekte på
+`https://tilbudsmaskinen.no/` — `we_1U2DWx...` med **alle 241** event-typer og
+100 % feilrate, pluss en «Thin»-variant (`ed_test_61VBbUJ...`, 24 events).
+Begge satt til **Disabled**, bevisst ikke slettet: deaktivering er reversibel
+og gir samme effekt. De måtte tas nå, ikke senere — når `tilbudsmaskinen.no`
+kobles på Vercel, ville de begynt å POSTe hele event-strømmen mot forsiden.
+Verifisert via `GET /v1/webhook_endpoints` og `/v2/core/event_destinations`:
+de to gamle står `disabled`, vår står `enabled` med 3 events.
+
 ## ⚠️ GJENSTÅR FØR KOLLEGAENE INVITERES
 
 1. ~~Verifiser env-variablene~~ — **gjort.** Verifisert mot den deployede
    appen: forsiden, /logg-inn og kundens /betal/[token] svarer alle 200,
    det offentlige faktura-API-et returnerer riktig data uten sesjon, ukjent
    token gir 404, og /kunder redirecter (307) uten innlogging.
-2. **Stripe-webhook mot den nye adressen.** Dashboard → Developers → Webhooks
-   → Add endpoint: `https://tilbudsmodulen-ev335s-projects.vercel.app/api/webhooks/stripe`,
-   events `checkout.session.completed`, `payment_intent.succeeded`,
-   `payment_intent.payment_failed`. `whsec_...` derfra inn i
-   `STRIPE_WEBHOOK_SECRET` i Vercel. **Nå står den lokale `stripe listen`-
-   secreten der, som er ugyldig i produksjon** — kunden betaler, men fakturaen
-   blir aldri markert betalt og ingen PDF sendes.
+2. ~~Stripe-webhook mot den nye adressen~~ — **gjort, se punkt 22.**
+   `tilbudsmaskinen-vercel-prod` lytter på de tre eventene, ny secret ligger i
+   Vercel, og et ekte test-event ble levert med **200 OK**.
 3. **Test innlogging på den deployede adressen** før du sender linken videre.
 
 ### 5. PR-forsøk blokkert

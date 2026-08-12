@@ -96,17 +96,37 @@ noe feiler synlig noe sted. Innlogging via magic-link vil heller ikke fungere.
 
 ## 5. Stripe-webhook mot den nye adressen
 
-Stripe Dashboard → Developers → Webhooks → **Add endpoint**:
+**✅ Gjort 2026-08-12.** Endepunktet heter `tilbudsmaskinen-vercel-prod`
+(`we_1U3hPYGmxqihrRSkawIf9plO`) og står i Stripe-kontoens **sandbox**
+(`acct_1U2D7zGmxqihrRSk`) — samme konto som `sk_test_...` i `.env.local`
+hører til. Verifisert med `stripe trigger payment_intent.succeeded`:
+leveransen ble **200 OK / Delivered**.
 
-- URL: `https://DIN-ADRESSE/api/webhooks/stripe`
+Slik det ble satt opp (Workbench → Webhooks → **Add destination**):
+
+- URL: `https://tilbudsmodulen-ev335s-projects.vercel.app/api/webhooks/stripe`
 - Events: `checkout.session.completed`, `payment_intent.succeeded`,
   `payment_intent.payment_failed`
+- Payload style: **Snapshot** (ikke «Thin») — `stripe.webhooks.constructEvent`
+  i `app/api/webhooks/stripe/route.ts` forventer v1-payloaden
+- Scope: Your account
 
-Kopier `whsec_...` derfra inn i `STRIPE_WEBHOOK_SECRET` og deploy på nytt.
+Kopier `whsec_...` derfra inn i `STRIPE_WEBHOOK_SECRET` og **deploy på nytt** —
+Vercel varsler selv «A new deployment is needed for changes to take effect»,
+med en Redeploy-knapp i samme melding. Uten den deployen kjører den gamle
+verdien videre.
 
 **Dette er en annen secret enn den `stripe listen` bruker lokalt.** Brukes feil
 secret, avvises hver webhook med ugyldig signatur: kunden betaler, men
 fakturaen blir aldri markert betalt og ingen PDF sendes.
+
+**Ryddet 2026-08-12:** to eldre event-destinasjoner pekte på
+`https://tilbudsmaskinen.no/` (rot-URL, ikke webhook-stien) — `we_1U2DWx...`
+med alle 241 event-typer og 100 % feilrate, pluss en «Thin»-variant
+(`ed_test_61VBbUJ...`, 24 events). Begge er satt til **Disabled**, ikke slettet,
+så konfigurasjonen kan hentes tilbake. Grunnen til å stoppe dem *nå*: når
+`tilbudsmaskinen.no` kobles på Vercel i steg 6b, ville de begynt å POSTe
+hele event-strømmen mot forsiden.
 
 ## 6. Verifiser før du inviterer noen
 
