@@ -1,11 +1,12 @@
 import { NextAuthOptions } from 'next-auth'
 import EmailProvider from 'next-auth/providers/email'
 import { PublicSchemaSupabaseAdapter } from '@/lib/supabaseAuthAdapter'
+import { paakrevdEnv } from '@/lib/env'
 
 export const authOptions: NextAuthOptions = {
   adapter: PublicSchemaSupabaseAdapter({
-    url: process.env.SUPABASE_URL as string,
-    secret: process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+    url: paakrevdEnv('SUPABASE_URL'),
+    secret: paakrevdEnv('SUPABASE_SERVICE_ROLE_KEY'),
   }),
   providers: [
     EmailProvider({

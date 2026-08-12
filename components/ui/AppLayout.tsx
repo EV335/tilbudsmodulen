@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import Section from '@/components/ui/Section'
-import { useFirma } from '@/components/FirmaProvider'
+import { useFirma, useManglerFirma } from '@/components/FirmaProvider'
 
 const NAV_LENKER = [
   { href: '/calc', label: 'Nytt tilbud' },
@@ -18,6 +18,7 @@ const NAV_LENKER = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
   const firma = useFirma()
+  const manglerFirma = useManglerFirma()
   const pathname = usePathname()
   const [menyApen, setMenyApen] = useState(false)
 
@@ -128,6 +129,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </nav>
         )}
       </header>
+
+      {innlogget && manglerFirma && !pathname?.startsWith('/innstillinger') && (
+        <div className="bg-gold/15 border-b border-gold/30">
+          <Section size="xl" spacing="none" className="py-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-white/80">
+              Fyll inn firmaopplysningene dine — uten dem går fakturaene ut med
+              «TilbudsMaskinen» som avsender i stedet for ditt eget firmanavn.
+            </p>
+            <Link href="/innstillinger/firma" className="text-sm font-bold text-gold hover:underline shrink-0">
+              Sett opp firma →
+            </Link>
+          </Section>
+        </div>
+      )}
 
       <main className="flex-1">{children}</main>
 

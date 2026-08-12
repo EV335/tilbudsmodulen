@@ -4,10 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { hentFaktura, settFakturaCheckoutSession } from '@/lib/payments'
 import { ikkeBetalbarGrunn } from '@/lib/fakturaStatus'
-
-function appUrl(): string {
-  return process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000'
-}
+import { appUrl } from '@/lib/env'
 
 // Privat-flyt: Stripe-hostet Checkout. Brukes for enkle engangsbetalinger der
 // vi ikke trenger å lagre et betalingsmiddel eller en Stripe Customer.

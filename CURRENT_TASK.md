@@ -721,6 +721,45 @@ tapt da dev-serveren startet på nytt, og ny innlogging krever magic-link.
 375 px iframe for `/`, `/logg-inn`, `/betal/[token]` og `/historikk/invoices`
 — ingen sidelengs scroll noe sted.
 
+### 18. Klargjort for deploy og kollega-test — 2026-08-09
+Branch `ux/mobil-ytelse-kunderedigering`.
+
+**Erkjennelsen:** hele «Gjenstår»-lista henger på én ting — appen finnes bare
+på `localhost:3000`. Kollegaer kan ikke nå den, HTTPS-spørsmålet (punkt 8) kan
+ikke avgjøres, og `APP_URL` kan ikke settes riktig før appen har en ekte
+adresse. Deploy er ikke ett punkt på lista; det er forutsetningen for resten.
+
+**`docs/deploy.md`** er skrevet som en rekkefølge, ikke en liste: migrasjonen
+først (før bruker nummer to lager sin første faktura), så deploy, så `APP_URL`
+når adressen finnes, så Stripe-webhooken mot den adressen. Med full env-tabell
+og en avkryssingsliste å kjøre før noen inviteres.
+
+**Ny bruker fikk ingen beskjed om firmaoppsett.** En kollega som logger inn har
+ingen `firma`-rad. Ingenting i appen sa fra — og fakturaene deres ville gått ut
+med «TilbudsMaskinen» som avsender i stedet for deres eget firmanavn, uten at
+de oppdaget det før kunden hadde fått den. Nå vises et gult varsel med lenke til
+firmaoppsettet, skjult på selve innstillingssiden. `FirmaProvider` skiller
+«har ikke firma» fra «vet ikke ennå», ellers ville varselet blinket til på hver
+sidelast mens kallet pågikk.
+
+**Miljøvariabler feilet uleselig.** `lib/supabase.ts` og `lib/auth.ts` castet
+`process.env.X as string`. Manglet en av dem på en fersk deploy, feilet bygget
+med `supabaseUrl is required` fra inni supabase-js — uten å si hvilken
+variabel eller hvor den skulle settes. Ny `paakrevdEnv()` i `lib/env.ts`.
+**Verifisert** ved å kjøre `next build` med `SUPABASE_URL` tom:
+`Error: Miljøvariabelen SUPABASE_URL mangler. Se .env.local.example ...`
+
+**`appUrl()` lå i tre identiske kopier** (begge checkout-rutene +
+`lib/invoice.ts`). Den bygger betalingslenken kunden får i PDF og e-post — en
+retting som bare traff to av tre ville vært verre enn ingen. Samlet i
+`lib/env.ts`, og den logger nå et varsel i produksjon hvis verken `APP_URL`
+eller `NEXTAUTH_URL` er satt, i stedet for stille å falle tilbake på localhost.
+
+**`maxDuration = 60` på webhooken.** Den genererer PDF, laster opp til Storage
+og sender e-post før den svarer. Ryker vertens standardgrense underveis, får
+Stripe aldri 200 og prøver igjen — og da stopper idempotency-sjekken forsøk to,
+slik at fakturaen blir stående betalt uten PDF og e-post.
+
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
 1. **`gh` (GitHub CLI) er ikke installert** på denne maskinen — søkt gjennom vanlige
@@ -748,7 +787,12 @@ være?) — ikke besvart ennå.
 
 **Ingen åpne spørsmål akkurat nå.**
 
-## Gjenstår før "ferdig utviklet" (mål: lokalt, klart for kolleger)
+## Gjenstår før kollega-test
+
+**Alt under henger på deploy — se `docs/deploy.md`. Appen kjører bare på
+localhost, så kollegaene kan ikke nå den, og punkt 1 og 2 kan ikke avgjøres
+før den har en ekte HTTPS-adresse.**
+
 1. **Bedrift-flyten på HTTPS** — bekrefte at "A processing error occurred."
    forsvinner (se punkt 8). Betalingen går faktisk gjennom, men kunden ser en
    feilmelding. Krever en HTTPS-deploy for å avgjøre.

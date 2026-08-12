@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer'
 import { supabase } from '@/lib/supabase'
 import { Faktura, settFakturaPdfUrl } from '@/lib/payments'
 import { formatKr } from '@/lib/format'
+import { appUrl } from '@/lib/env'
 
 export interface FirmaInfo {
   firmanavn: string
@@ -10,10 +11,6 @@ export interface FirmaInfo {
   orgnr?: string | null
   adresse?: string | null
   bankkonto?: string | null
-}
-
-function appUrl(): string {
-  return process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000'
 }
 
 export function fakturaBetalingslenke(faktura: Faktura): string {

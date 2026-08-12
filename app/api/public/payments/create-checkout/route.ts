@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getStripe } from '@/lib/stripe'
 import { hentFakturaByPublicToken, settFakturaCheckoutSession } from '@/lib/payments'
 import { ikkeBetalbarGrunn } from '@/lib/fakturaStatus'
-
-function appUrl(): string {
-  return process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000'
-}
+import { appUrl } from '@/lib/env'
 
 // Public motstykke til /api/payments/create-checkout — autentiserer via
 // faktura.public_token i stedet for en innlogget sesjon, slik at
