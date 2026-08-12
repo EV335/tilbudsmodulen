@@ -44,3 +44,22 @@ export function beregnMva(amount: number, sats: number, inkludert: boolean): Mva
   const mva = rundOre(belop * (sats / 100))
   return { sats, grunnlag: belop, mva, total: rundOre(belop + mva) }
 }
+
+// Minimumsformen mva-beregningen trenger. Egen type i stedet for `Faktura`,
+// nettopp fordi den bor i lib/payments.ts, som importerer Supabase-klienten.
+export interface MvaGrunnlag {
+  amount: number
+  mva_sats: number
+  mva_inkludert: boolean
+}
+
+// Én vei til beløpene — brukt av PDF, Stripe-beløpet og alle tre visningene.
+// `total` er det kunden betaler, aldri `amount` direkte.
+//
+// Denne bor HER og ikke i lib/payments.ts av en konkret grunn: klientkomponenter
+// trenger den, og et verdi-import fra payments drar hele Supabase-klienten med
+// service_role-nøkkelen inn i nettleserbunten. Det skjedde faktisk — fakturasiden
+// ble blank med "Miljøvariabelen SUPABASE_URL mangler" i konsollen.
+export function fakturaBelop(faktura: MvaGrunnlag): MvaLinjer {
+  return beregnMva(faktura.amount, faktura.mva_sats, faktura.mva_inkludert)
+}

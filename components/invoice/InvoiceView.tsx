@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { fakturaBelop, type Faktura } from '@/lib/payments'
+import type { Faktura } from '@/lib/payments'
+import { fakturaBelop } from '@/lib/mva'
 import { FAKTURA_STATUS_LABEL, FAKTURA_STATUS_FARGE, kanBetales } from '@/lib/fakturaStatus'
 import { formatKr, formatDato } from '@/lib/format'
 import Card from '@/components/ui/Card'

@@ -1,6 +1,9 @@
 import { supabase } from '@/lib/supabase'
 import { getStripe } from '@/lib/stripe'
-import { beregnMva, type MvaLinjer } from '@/lib/mva'
+import { fakturaBelop, type MvaLinjer } from '@/lib/mva'
+
+// Re-eksport for server-side kallere, som allerede importerer fra payments.
+export { fakturaBelop }
 
 export type KundeType = 'privat' | 'bedrift'
 
@@ -43,12 +46,6 @@ export interface Faktura {
   // Om `amount` allerede inneholder mva.
   mva_inkludert: boolean
   kunde?: Kunde
-}
-
-// Én vei til beløpene — brukt av PDF, UI og beregningen av hva Stripe skal
-// trekke. `total` er det kunden betaler, aldri `amount` direkte.
-export function fakturaBelop(faktura: Faktura): MvaLinjer {
-  return beregnMva(faktura.amount, faktura.mva_sats, faktura.mva_inkludert)
 }
 
 // ---------------------------------------------------------------------------
