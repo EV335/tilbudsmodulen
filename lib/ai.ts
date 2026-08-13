@@ -105,6 +105,33 @@ Med vennlig hilsen`
   }
 }
 
+/**
+ * Regner prisen på nytt fra linjene og sammenligner med det klienten sendte inn.
+ * Returnerer en feilmelding hvis de spriker, ellers null.
+ *
+ * Uten denne var prisen som ble lagret — og senere fakturert til kunden — bare
+ * det nettleseren påsto. En bug i klienten, en gammel fane med utdatert kode
+ * eller noen som tuklet i konsollen ville gått rett gjennom til fakturaen.
+ *
+ * Tilbud lagret før linjemodellen har ingen `linjer` og hoppes over; de kan ikke
+ * etterregnes, og skal fortsatt kunne åpnes og lagres.
+ */
+export function verifiserPris(input: TilbudInput, resultat: TilbudResult): string | null {
+  if (!input?.linjer?.length) return null
+
+  const sum = beregnTilbud(input.jobbType, input.linjer, input.timepris, input.marginProsent)
+
+  if (sum.linjer.length === 0) {
+    return 'Tilbudet har ingen gyldige linjer.'
+  }
+
+  if (sum.prisKr !== resultat.pris) {
+    return `Prisen stemmer ikke med utregningen: fikk ${resultat.pris}, regnet ut ${sum.prisKr}.`
+  }
+
+  return null
+}
+
 export async function genererTilbud(input: TilbudInput): Promise<TilbudResult> {
   const sum = beregnTilbud(input.jobbType, input.linjer ?? [], input.timepris, input.marginProsent)
 

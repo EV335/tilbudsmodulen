@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:pris": "npx --yes tsx scripts/pristest.ts"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.8.0",

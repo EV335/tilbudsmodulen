@@ -12,10 +12,15 @@ import Button from '@/components/ui/Button'
 const JOBBTYPE_OPTIONS = FAGNAVN.map((navn) => ({ value: navn, label: FAG[navn].navn }))
 
 interface LinjeSkjema {
+  /** Stabil nøkkel for React. Uten den arver en linje inputfeltene til den som
+   *  ble slettet over den — indeks som key gjenbruker DOM-noden. */
+  id: number
   operasjonId: string
   antall: string
   materialPerEnhet: string
 }
+
+let linjeTeller = 0
 
 interface InputFormProps {
   onSubmit: (input: TilbudInput) => void
@@ -27,6 +32,7 @@ function nyLinje(jobbType: string, operasjonId?: string): LinjeSkjema {
   const fag = hentFag(jobbType)
   const op = operasjonId ? hentOperasjon(jobbType, operasjonId) : fag.operasjoner[0]
   return {
+    id: ++linjeTeller,
     operasjonId: op?.id ?? fag.operasjoner[0].id,
     antall: '',
     materialPerEnhet: String(op?.materialPerEnhet ?? 0),
@@ -72,6 +78,8 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
   const forhandsvisning = useMemo(() => {
     const tp = Number(timepris)
     if (!tp || tp <= 0) return null
+    const m = Number(margin)
+    if (!Number.isFinite(m) || m < 0 || m >= 100) return null
     const gyldige = linjer
       .filter((l) => Number(l.antall) > 0)
       .map((l) => ({
@@ -80,7 +88,7 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
         materialPerEnhet: l.materialPerEnhet === '' ? undefined : Number(l.materialPerEnhet),
       }))
     if (gyldige.length === 0) return null
-    return beregnTilbud(jobbType, gyldige, tp, Number(margin))
+    return beregnTilbud(jobbType, gyldige, tp, m)
   }, [jobbType, linjer, timepris, margin])
 
   function handleSubmit(e: React.FormEvent) {
@@ -150,7 +158,7 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
         {linjer.map((linje, i) => {
           const op = hentOperasjon(jobbType, linje.operasjonId)
           return (
-            <div key={i} className="rounded-md border-2 border-slate-200 p-4 space-y-4">
+            <div key={linje.id} className="rounded-md border-2 border-slate-200 p-4 space-y-4">
               <Select
                 id={`operasjon-${i}`}
                 label="Arbeid"
@@ -197,8 +205,8 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
       {forhandsvisning && (
         <div className="rounded-md border-2 border-slate-300 bg-slate-50 p-4 space-y-2">
           <h3 className="font-semibold text-slate-900">Regnestykket</h3>
-          {forhandsvisning.linjer.map((l) => (
-            <p key={l.operasjonId + l.antall} className="text-sm text-slate-700">
+          {forhandsvisning.linjer.map((l, i) => (
+            <p key={`${l.operasjonId}-${i}`} className="text-sm text-slate-700">
               {l.navn}: {l.antall} {l.enhetstekst} × {l.timerPerEnhet} t = {l.timer} t × {Number(timepris).toLocaleString('nb-NO')} kr
               {' + '}
               {l.materialKr.toLocaleString('nb-NO')} kr materialer → <strong>{l.prisKr.toLocaleString('nb-NO')} kr</strong>
@@ -215,8 +223,8 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
           </p>
           {forhandsvisning.linjer
             .filter((l) => l.advarsel)
-            .map((l) => (
-              <p key={`adv-${l.operasjonId}`} className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2">
+            .map((l, i) => (
+              <p key={`adv-${l.operasjonId}-${i}`} className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2">
                 {l.navn}: {l.advarsel}
               </p>
             ))}

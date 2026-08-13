@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { Faktura, settFakturaPdfUrl, fakturaBelop } from '@/lib/payments'
 import { formatKr } from '@/lib/format'
 import { appUrl } from '@/lib/env'
+import { tilPdfTekst } from '@/lib/pdftekst'
 
 export interface FirmaInfo {
   firmanavn: string
@@ -89,6 +90,13 @@ async function hentLogo(url: string): Promise<{ dataUrl: string; w: number; h: n
 
 export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | null): Promise<Buffer> {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+
+  // ALL tekst inn i fakturaen går gjennom denne. Firmanavn, adresse og kundenavn
+  // er frie tekstfelt, og jsPDFs standardfont sletter stille tegn utenfor
+  // WinAnsi — en kunde som heter «Kjell–Ove» ville fått navnet sitt feilstavet
+  // på en faktura som allerede er sendt. Bruk `skriv`, aldri `doc.text`.
+  const skriv = (tekst: string, x: number, yPos: number, opts?: Parameters<typeof doc.text>[3]) =>
+    doc.text(tilPdfTekst(tekst), x, yPos, opts)
   const margLeft = 56
   const margRight = 56
   const sideBredde = doc.internal.pageSize.getWidth()
@@ -111,47 +119,47 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
 
   doc.setFontSize(20)
   doc.setFont('helvetica', 'bold')
-  doc.text('FAKTURA', margLeft, y)
+  skriv('FAKTURA', margLeft, y)
   doc.setFontSize(11)
   doc.setFont('helvetica', 'normal')
-  doc.text(faktura.invoice_number, sideBredde - margRight, y, { align: 'right' })
+  skriv(faktura.invoice_number, sideBredde - margRight, y, { align: 'right' })
   y += 24
 
   doc.setFontSize(12)
   doc.setFont('helvetica', 'bold')
-  doc.text(firma?.firmanavn || 'TilbudsMaskinen', margLeft, y)
+  skriv(firma?.firmanavn || 'TilbudsMaskinen', margLeft, y)
   y += 16
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   if (firma?.adresse) {
-    doc.text(firma.adresse, margLeft, y)
+    skriv(firma.adresse, margLeft, y)
     y += 14
   }
   if (firma?.orgnr) {
     // Mva-registrerte foretak skal oppgi org.nr etterfulgt av MVA.
     const erMvaRegistrert = (firma.mva_sats ?? 0) > 0
-    doc.text(`Org.nr: ${firma.orgnr}${erMvaRegistrert ? ' MVA' : ''}`, margLeft, y)
+    skriv(`Org.nr: ${firma.orgnr}${erMvaRegistrert ? ' MVA' : ''}`, margLeft, y)
     y += 14
   }
 
   y += 20
   doc.setFontSize(11)
   doc.setFont('helvetica', 'bold')
-  doc.text('Faktureres til', margLeft, y)
+  skriv('Faktureres til', margLeft, y)
   y += 16
   doc.setFont('helvetica', 'normal')
-  doc.text(faktura.kunde?.navn || 'Ukjent kunde', margLeft, y)
+  skriv(faktura.kunde?.navn || 'Ukjent kunde', margLeft, y)
   y += 14
   if (faktura.kunde?.adresse) {
-    doc.text(faktura.kunde.adresse, margLeft, y)
+    skriv(faktura.kunde.adresse, margLeft, y)
     y += 14
   }
   if (faktura.kunde?.type === 'bedrift' && faktura.kunde?.orgnr) {
-    doc.text(`Org.nr: ${faktura.kunde.orgnr}`, margLeft, y)
+    skriv(`Org.nr: ${faktura.kunde.orgnr}`, margLeft, y)
     y += 14
   }
   if (faktura.kunde?.epost) {
-    doc.text(faktura.kunde.epost, margLeft, y)
+    skriv(faktura.kunde.epost, margLeft, y)
     y += 14
   }
 
@@ -167,27 +175,27 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
     // Uten spesifisert grunnlag og mva-beløp er fakturaen ikke gyldig for en
     // mva-registrert utsteder.
     doc.setFont('helvetica', 'normal')
-    doc.text('Grunnlag', margLeft, y)
-    doc.text(formatKr(belop.grunnlag), sideBredde - margRight, y, { align: 'right' })
+    skriv('Grunnlag', margLeft, y)
+    skriv(formatKr(belop.grunnlag), sideBredde - margRight, y, { align: 'right' })
     y += 16
-    doc.text(`Merverdiavgift ${belop.sats} %`, margLeft, y)
-    doc.text(formatKr(belop.mva), sideBredde - margRight, y, { align: 'right' })
+    skriv(`Merverdiavgift ${belop.sats} %`, margLeft, y)
+    skriv(formatKr(belop.mva), sideBredde - margRight, y, { align: 'right' })
     y += 16
     doc.setDrawColor(200)
     doc.line(sideBredde - margRight - 160, y - 6, sideBredde - margRight, y - 6)
   }
 
   doc.setFont('helvetica', 'bold')
-  doc.text(belop.sats > 0 ? 'Å betale' : 'Beløp', margLeft, y)
-  doc.text(formatKr(belop.total), sideBredde - margRight, y, { align: 'right' })
+  skriv(belop.sats > 0 ? 'Å betale' : 'Beløp', margLeft, y)
+  skriv(formatKr(belop.total), sideBredde - margRight, y, { align: 'right' })
   y += 20
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
-  doc.text(`Opprettet: ${new Date(faktura.created_at).toLocaleDateString('nb-NO')}`, margLeft, y)
+  skriv(`Opprettet: ${new Date(faktura.created_at).toLocaleDateString('nb-NO')}`, margLeft, y)
   y += 14
   if (faktura.due_date) {
-    doc.text(`Forfallsdato: ${new Date(faktura.due_date).toLocaleDateString('nb-NO')}`, margLeft, y)
+    skriv(`Forfallsdato: ${new Date(faktura.due_date).toLocaleDateString('nb-NO')}`, margLeft, y)
     y += 14
   }
   const statusTekst: Record<Faktura['status'], string> = {
@@ -197,26 +205,26 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
     failed: 'Betaling feilet',
     cancelled: 'Kansellert',
   }
-  doc.text(`Status: ${statusTekst[faktura.status]}`, margLeft, y)
+  skriv(`Status: ${statusTekst[faktura.status]}`, margLeft, y)
   y += 14
   if (faktura.paid_at) {
-    doc.text(`Betalt: ${new Date(faktura.paid_at).toLocaleDateString('nb-NO')}`, margLeft, y)
+    skriv(`Betalt: ${new Date(faktura.paid_at).toLocaleDateString('nb-NO')}`, margLeft, y)
     y += 14
   }
 
   if (faktura.status !== 'paid') {
     y += 20
     doc.setFont('helvetica', 'bold')
-    doc.text('Betalingsinformasjon', margLeft, y)
+    skriv('Betalingsinformasjon', margLeft, y)
     y += 14
     doc.setFont('helvetica', 'normal')
-    doc.text(`Betal enkelt med kort: ${fakturaBetalingslenke(faktura)}`, margLeft, y)
+    skriv(`Betal enkelt med kort: ${fakturaBetalingslenke(faktura)}`, margLeft, y)
     y += 14
     if (firma?.bankkonto) {
-      doc.text(`Eller via bank, kontonummer: ${firma.bankkonto}`, margLeft, y)
+      skriv(`Eller via bank, kontonummer: ${firma.bankkonto}`, margLeft, y)
       y += 14
     }
-    doc.text(`Merk betalingen med fakturanummer ${faktura.invoice_number}.`, margLeft, y)
+    skriv(`Merk betalingen med fakturanummer ${faktura.invoice_number}.`, margLeft, y)
   }
 
   return Buffer.from(doc.output('arraybuffer'))

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { TilbudInput, TilbudResult } from '@/lib/ai'
 import { formatKr } from '@/lib/format'
 import { omfangTekst } from '@/lib/priser'
+import { tilPdfTekst } from '@/lib/pdftekst'
 import { useFirma, type Firma } from '@/components/FirmaProvider'
 import Card from '@/components/ui/Card'
 import Textarea from '@/components/ui/Textarea'
@@ -78,7 +79,7 @@ async function lastNedPdf(tilbudstekst: string, input: TilbudInput, firma: Firma
 
   doc.setFontSize(16)
   doc.setFont('helvetica', 'bold')
-  doc.text(firma?.firmanavn || 'TilbudsMaskinen', margLeft, y)
+  doc.text(tilPdfTekst(firma?.firmanavn || 'TilbudsMaskinen'), margLeft, y)
 
   doc.setFontSize(9)
   doc.setFont('helvetica', 'normal')
@@ -91,7 +92,7 @@ async function lastNedPdf(tilbudstekst: string, input: TilbudInput, firma: Firma
   doc.setFont('helvetica', 'normal')
 
   const linjeHoyde = 15
-  const linjer = doc.splitTextToSize(tilbudstekst, tekstBredde)
+  const linjer = doc.splitTextToSize(tilPdfTekst(tilbudstekst), tekstBredde)
   for (const linje of linjer) {
     if (y > sideHoyde - bunnMarg) {
       doc.addPage()
@@ -176,8 +177,8 @@ export default function ResultCard({ resultat, input, tilbudId }: ResultCardProp
         <Card>
           <div className="text-sm font-bold text-black/50 uppercase tracking-wide mb-3">Regnestykket</div>
           <div className="space-y-3">
-            {resultat.linjer.map((l) => (
-              <div key={l.operasjonId + l.antall} className="pb-3 border-b border-black/10 last:border-0 last:pb-0">
+            {resultat.linjer.map((l, i) => (
+              <div key={`${l.operasjonId}-${i}`} className="pb-3 border-b border-black/10 last:border-0 last:pb-0">
                 <div className="flex justify-between gap-4 font-bold">
                   <span>
                     {l.navn} — {l.antall} {l.enhetstekst}

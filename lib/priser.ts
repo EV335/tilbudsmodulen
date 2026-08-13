@@ -312,6 +312,12 @@ export function beregnLinje(
   const op = hentOperasjon(jobbType, linje.operasjonId)
   if (!op || !(linje.antall > 0)) return null
 
+  // Margin 100 % ga divisjon på null -> pris = Infinity, og over 100 % ga negativ
+  // pris. API-et avviser slike verdier, men forhåndsvisningen i skjemaet regnet
+  // videre og viste «Sum: kr Infinity». Stopper det ved kilden i stedet.
+  if (!Number.isFinite(marginProsent) || marginProsent < 0 || marginProsent >= 100) return null
+  if (!Number.isFinite(timepris) || timepris <= 0) return null
+
   const materialPerEnhet = linje.materialPerEnhet ?? op.materialPerEnhet
   const timer = rund(linje.antall * op.timerPerEnhet)
   const arbeidKr = Math.round(timer * timepris)

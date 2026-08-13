@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { hentTilbud, oppdaterTilbud, slettTilbud } from '@/lib/historikk'
-import { TilbudInput, TilbudResult } from '@/lib/ai'
+import { TilbudInput, TilbudResult, verifiserPris } from '@/lib/ai'
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -33,6 +33,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (!body.input || !body.resultat) {
       return NextResponse.json({ error: 'Mangler input eller resultat.' }, { status: 400 })
+    }
+
+    const prisfeil = verifiserPris(body.input, body.resultat)
+    if (prisfeil) {
+      console.error('Avviste lagring av tilbud:', prisfeil)
+      return NextResponse.json({ error: prisfeil }, { status: 400 })
     }
 
     const oppdatert = await oppdaterTilbud(session.user.id, params.id, body.input, body.resultat)

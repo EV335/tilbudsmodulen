@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { hentAlleTilbud, lagreTilbud } from '@/lib/historikk'
-import { TilbudInput, TilbudResult } from '@/lib/ai'
+import { TilbudInput, TilbudResult, verifiserPris } from '@/lib/ai'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -31,6 +31,12 @@ export async function POST(req: NextRequest) {
 
     if (!body.input || !body.resultat) {
       return NextResponse.json({ error: 'Mangler input eller resultat.' }, { status: 400 })
+    }
+
+    const prisfeil = verifiserPris(body.input, body.resultat)
+    if (prisfeil) {
+      console.error('Avviste lagring av tilbud:', prisfeil)
+      return NextResponse.json({ error: prisfeil }, { status: 400 })
     }
 
     const { data: firma } = await supabase
