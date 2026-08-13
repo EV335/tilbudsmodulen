@@ -988,6 +988,44 @@ skjemaet og per linje på resultatsiden, markedsvarsel begge veier, og malbasert
 tilbudstekst (siden nøkkelen er borte). Tallene er identiske med eller uten
 AI — den rører dem ikke lenger.
 
+### 24. Bug-runde etter klikk-testing i produksjon — 2026-08-13 (`e9243f7`)
+
+Kjørte hele flyten innlogget i produksjon: skjema → server → historikk → PDF.
+Tallene stemte overalt (48 133 kr på tre uavhengige beregninger), men runden
+fant **seks feil** som bare viste seg ved å lese den genererte PDF-en og teste
+grensetilfeller — ingen av dem ga typefeil eller byggfeil.
+
+1. **jsPDF slettet stille tegn utenfor WinAnsi.** Tankestreken i tilbudslinjene
+   var rett og slett borte i PDF-en: «130 m² veggflate  kr 26 433,-». Ikke
+   erstattet med noe synlig — bare vekk. **Gjelder også faktura-PDF-en som
+   sendes til kundene**, der firmanavn, adresse og kundenavn er frie tekstfelt.
+   En kunde som heter «Kjell–Ove» ville fått navnet feilstavet på fakturaen.
+   Ny `lib/pdftekst.ts` vasker teksten. All tekst i faktura-PDF-en går nå gjennom
+   én `skriv()`-funksjon, ikke `doc.text` direkte, så neste kall ikke gjeninnfører
+   feilen.
+2. **Margin 100 % ga `pris = Infinity`** i forhåndsvisningen (divisjon på null),
+   over 100 % ga negativ pris. API-et avviste det, men skjemaet regnet videre og
+   viste «Sum: kr Infinity». Stoppet i `beregnLinje`, ikke bare i validering.
+3. **Timepris 0 eller negativ** slapp gjennom til utregningen.
+4. **Linjer brukte indeks som React-key.** Slettet du linje 1 av 3, arvet neste
+   linje inputfeltene til den slettede — verdier hoppet mellom rader.
+5. **To like linjer ga duplikate React-keys** i forhåndsvisning, advarsler og
+   regnestykket på resultatsiden.
+6. **Serveren stolte blindt på prisen klienten sendte inn** — og den prisen
+   havner på en kundefaktura. `verifiserPris()` regner nå etter ved POST og
+   PATCH. Gamle tilbud uten linjer hoppes over, så de fortsatt kan lagres.
+
+**`scripts/pristest.ts`** dekker alle seks. Kjør med `npm run test:pris`.
+Ti tester, ingen testrammeverk — vanlig skript med exit-kode, klart for CI.
+
+**Verifisert etter deploy:** samme tilbud, ny PDF hentet fra den deployede
+appen — tankestreken er nå på plass: «130 m² veggflate - kr 26 433,-».
+
+**Lærdom verdt å ta med:** alle seks bugene overlevde `tsc --noEmit` og
+`next build`. De ble funnet ved å bruke appen og lese output-filen. Den
+PDF-feilen hadde gått rett til kundene uten at noen så den før en kunde med
+bindestrek i navnet klaget.
+
 ## ⚠️ GJENSTÅR FØR KOLLEGAENE INVITERES
 
 1. ~~Verifiser env-variablene~~ — **gjort.** Verifisert mot den deployede
@@ -997,10 +1035,12 @@ AI — den rører dem ikke lenger.
 2. ~~Stripe-webhook mot den nye adressen~~ — **gjort, se punkt 22.**
    `tilbudsmaskinen-vercel-prod` lytter på de tre eventene, ny secret ligger i
    Vercel, og et ekte test-event ble levert med **200 OK**.
-3. **Test innlogging på den deployede adressen** før du sender linken videre.
-   Ingen har logget inn på den deployede appen ennå — heller ikke bruker.
-4. **Klikk gjennom det nye kalkulator-skjemaet.** `/calc` krever innlogging, så
-   dette er ikke gjort. Malervennen skal ta en runde i praksis.
+3. ~~Test innlogging på den deployede adressen~~ — **gjort 2026-08-13.**
+   Magic-link kom frem via Resend og ga innlogget sesjon.
+4. ~~Klikk gjennom det nye kalkulator-skjemaet~~ — **gjort, se punkt 24.**
+   Hele flyten kjørt i produksjon: skjema → server → historikk → PDF, alle tre
+   beregningene ga 48 133 kr. Malervennen skal fortsatt ta sin egen runde for å
+   vurdere om satsene stemmer med hvordan han jobber.
 5. **Sju satser mangler markedsdata** og står som `anslag` i `lib/priser.ts`:
    sparkling, montere lister, membran, bytte WC, bytte servant/kran, polering og
    innvendig rens. De gir varsel i appen. Spørsmålet til fagpersonen er **ikke**
