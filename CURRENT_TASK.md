@@ -960,6 +960,34 @@ lister, membran, bytte WC/servant, bilpleie). De gir varsel i appen. Se
 linjer. `omfangTekst()` faller tilbake på det gamle feltet, så historikken
 fortsetter å vise riktig.
 
+### 23. Prismodellen ute i produksjon, OpenAI-nøkkelen fjernet — 2026-08-13
+
+**`OPENAI_API_KEY` slettet fra Vercel** (Production og Preview) på brukerens
+beskjed, og redeploy kjørt. Verifisert: søk på «OPENAI» i variabellista gir
+«No Results Found». Nøkkelen brukes kun i `lib/ai.ts` med trygg fallback og står
+ikke i `lib/env.ts` sine påkrevde variabler, så bygget tåler at den er borte.
+
+Merk to ting Vercel selv sier i slettedialogen og som lett misforstås:
+- Sletting fjerner nøkkelen fra appen, **ikke fra OpenAI**. Vil den være ugyldig,
+  må den trekkes tilbake på platform.openai.com. Den ligger fortsatt i brukerens
+  lokale `.env.local`.
+- Den redeployen tok 2 min 54 s mot 32–58 s på alle tidligere bygg — kaldt bygg
+  uten cache etter env-endring. Ikke en feil, men ikke la deg lure til å tro at
+  den henger.
+
+**Pushet og deployet:** `9683094..52b0609`. Deploy `52b0609` er Ready (37 s) og
+markert Production.
+
+**Verifisert mot den live appen etter deploy:** forsiden og `/logg-inn` svarer
+200, `/calc` redirecter (307) uten innlogging, og Stripe-webhooken svarer
+fortsatt `400 Mangler stripe-signature-header` — betalingsflyten er urørt av
+kalkulator-ombyggingen.
+
+**Tilstanden kollegaene møter nå:** ny linjemodell, regnestykket synlig i
+skjemaet og per linje på resultatsiden, markedsvarsel begge veier, og malbasert
+tilbudstekst (siden nøkkelen er borte). Tallene er identiske med eller uten
+AI — den rører dem ikke lenger.
+
 ## ⚠️ GJENSTÅR FØR KOLLEGAENE INVITERES
 
 1. ~~Verifiser env-variablene~~ — **gjort.** Verifisert mot den deployede
@@ -970,6 +998,14 @@ fortsetter å vise riktig.
    `tilbudsmaskinen-vercel-prod` lytter på de tre eventene, ny secret ligger i
    Vercel, og et ekte test-event ble levert med **200 OK**.
 3. **Test innlogging på den deployede adressen** før du sender linken videre.
+   Ingen har logget inn på den deployede appen ennå — heller ikke bruker.
+4. **Klikk gjennom det nye kalkulator-skjemaet.** `/calc` krever innlogging, så
+   dette er ikke gjort. Malervennen skal ta en runde i praksis.
+5. **Sju satser mangler markedsdata** og står som `anslag` i `lib/priser.ts`:
+   sparkling, montere lister, membran, bytte WC, bytte servant/kran, polering og
+   innvendig rens. De gir varsel i appen. Spørsmålet til fagpersonen er **ikke**
+   «hva bør dette koste», men «hvor lang tid bruker du på én enhet» — det er
+   `timerPerEnhet` modellen regner ut fra. Se `docs/priser.md`.
 
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
@@ -998,11 +1034,12 @@ være?) — ikke besvart ennå.
 
 **Ingen åpne spørsmål akkurat nå.**
 
-## Gjenstår før kollega-test
+## Gjenstår før kollega-test (eldre liste)
 
-**Alt under henger på deploy — se `docs/deploy.md`. Appen kjører bare på
-localhost, så kollegaene kan ikke nå den, og punkt 1 og 2 kan ikke avgjøres
-før den har en ekte HTTPS-adresse.**
+**Utdatert innledning rettet 2026-08-13:** appen er deployet (punkt 21), så
+«alt henger på deploy» stemmer ikke lenger. Punkt 1 og 2 under er nå mulige å
+avgjøre. Lista over — «GJENSTÅR FØR KOLLEGAENE INVITERES» — er den som gjelder;
+denne beholdes for historikken.
 
 1. **Bedrift-flyten på HTTPS** — bekrefte at "A processing error occurred."
    forsvinner (se punkt 8). Betalingen går faktisk gjennom, men kunden ser en
@@ -1032,6 +1069,10 @@ Alle nøkler ligger i `.env.local` (gitignored). Alle eksponerte nøkler er rote
 se punkt 9. **Arbeidsprinsipp: nye hemmeligheter limes aldri inn i chatten** —
 bruker redigerer `.env.local` selv, verifisering skjer via `curl` som aldri
 skriver ut verdien.
+
+`OPENAI_API_KEY` er **fjernet fra Vercel** 2026-08-13 (se punkt 23). Den ligger
+fortsatt i lokal `.env.local`, og er fortsatt gyldig hos OpenAI. Uten den bruker
+appen malbasert tilbudstekst — tallene er upåvirket.
 
 `STRIPE_WEBHOOK_SECRET` må matche den kjørende `stripe listen`-sesjonen (ikke
 Dashboard-secreten) for lokal testing. Stripe ga samme secret etter PC-restart,
