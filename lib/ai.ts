@@ -1,12 +1,21 @@
-import { hentFagKonfig } from '@/lib/priser'
+import {
+  beregnTilbud,
+  hentFag,
+  BeregnetLinje,
+  BeregnetSum,
+  TilbudLinjeInput,
+} from '@/lib/priser'
 
 export interface TilbudInput {
   jobbType: string
-  romstorrelseM2: number
   timepris: number
-  materialkost: number
+  linjer: TilbudLinjeInput[]
+  marginProsent?: number
   beskrivelse?: string
   kundenavn?: string
+  /** Kun for tilbud lagret før linjemodellen (august 2026). Brukes ikke i utregning. */
+  romstorrelseM2?: number
+  materialkost?: number
 }
 
 export interface TilbudResult {
@@ -18,76 +27,96 @@ export interface TilbudResult {
   marginKr: number
   risikoanalyse: string
   tilbudstekst: string
+  /** Hvor TEKSTEN kommer fra. Tallene regnes alltid i koden. */
   kilde: 'ai' | 'lokalt-estimat'
+  linjer?: BeregnetLinje[]
+  arbeidKr?: number
+  kostKr?: number
+  advarsler?: string[]
 }
 
-export const SYSTEM_PROMPT = `Du er en profesjonell kalkulatør for norske håndverkere (malere, snekkere, rørleggere, elektrikere, murere, bilpleie).
-Du får oppgitt jobbtype, romstørrelse i m², timepris, estimert materialkostnad, en valgfri beskrivelse og et valgfritt kundenavn.
+// AI-en får ALDRI bestemme pris. Den får de ferdige tallene og skriver teksten
+// rundt dem. Før denne endringen regnet modellen selv, og sju av sju svar var
+// aritmetisk umulige — pris stemte ikke med timer x timepris + materialer +
+// margin i et eneste tilfelle, med avvik opp til 52 500 kr. Den gjorde også at
+// samme jobb kunne gi 0,34x eller 1,45x av husmodellen.
+export const SYSTEM_PROMPT = `Du skriver tilbudstekster for norske håndverkere.
 
-Regn ut et realistisk tilbud og svar KUN med et gyldig JSON-objekt (ingen forklaringstekst, ingen markdown) med nøyaktig disse feltene:
+Du får et FERDIG UTREGNET tilbud. Tallene er bestemt av håndverkerens egne satser
+og skal ikke endres, diskuteres eller regnes om. Du skal kun formulere teksten.
+
+Svar KUN med et gyldig JSON-objekt (ingen markdown) med nøyaktig disse feltene:
 {
-  "pris": number,              // total tilbudspris i kroner, inkl. margin
-  "tidsbrukTimer": number,     // estimert tidsbruk i timer
-  "materialforbruk": string,   // kort beskrivelse av materialer som trengs
-  "materialkostTotal": number, // total materialkostnad i kroner
-  "marginProsent": number,     // margin i prosent
-  "marginKr": number,          // margin i kroner
-  "risikoanalyse": string,     // kort, konkret risikoanalyse (1-3 setninger)
-  "tilbudstekst": string       // ferdig, profesjonell tilbudstekst på norsk klar til å sendes til kunde
+  "materialforbruk": string,   // kort, konkret liste over materialer jobben krever
+  "risikoanalyse": string,     // 1-3 setninger om hva som kan drive kostnaden opp
+  "tilbudstekst": string       // ferdig tilbudstekst på norsk, klar til å sendes
 }
 
-Vær realistisk og konkret. Ikke bruk fyllord. Tilbudsteksten skal være kort, profesjonell og direkte, uten unødvendig prat.`
+Regler:
+- Gjenta prisen nøyaktig slik den er oppgitt. Ikke rund av, ikke juster, ikke foreslå noe annet tall.
+- Ikke finn på tillegg, rabatter eller forbehold som ikke følger av det du har fått.
+- Skriv kort og profesjonelt. Ingen fyllord, ingen overtalelse.`
 
-function beregnLokaltEstimat(input: TilbudInput): TilbudResult {
-  const fagKonfig = hentFagKonfig(input.jobbType)
-  const tidsbrukTimer = Math.max(1, Math.round(input.romstorrelseM2 * fagKonfig.timerPerM2 * 10) / 10)
+function formatKr(n: number): string {
+  return n.toLocaleString('nb-NO')
+}
 
-  const arbeidskostnad = tidsbrukTimer * input.timepris
-  const materialkostTotal = input.materialkost
-  const kostnadFoerMargin = arbeidskostnad + materialkostTotal
+function linjeTekst(l: BeregnetLinje): string {
+  return `- ${l.navn}: ${formatKr(l.antall)} ${l.enhetstekst} — kr ${formatKr(l.prisKr)},-`
+}
 
-  const marginProsent = fagKonfig.marginProsent
-  const pris = Math.round(kostnadFoerMargin / (1 - marginProsent / 100))
-  const marginKr = pris - kostnadFoerMargin
+function malbasertTekst(input: TilbudInput, sum: BeregnetSum): Omit<TilbudResult, 'kilde'> {
+  const materialforbruk = `Materialer for ${input.jobbType.toLowerCase()}-arbeidet er beregnet til kr ${formatKr(
+    sum.materialKr
+  )},- basert på omfanget i tilbudet. Faktisk forbruk bekreftes ved befaring.`
 
-  const materialforbruk = `Estimert materialforbruk for ${input.jobbType.toLowerCase()}-jobb på ${input.romstorrelseM2} m²: standard materialer og forbruksvarer tilpasset omfanget. Faktisk forbruk bør bekreftes ved befaring.`
-
-  const risikoanalyse = `Estimatet er basert på oppgitt areal og standard tidsbruk for ${input.jobbType.toLowerCase()}-arbeid. Skjulte forhold, dårlig tilgjengelighet eller avvik i underlag/overflate kan øke tidsbruk og materialkostnad. Anbefaler befaring før endelig pris bekreftes ved usikkerhet.`
+  const risikoanalyse = `Prisen bygger på oppgitt omfang og normal tidsbruk for ${input.jobbType.toLowerCase()}-arbeid. Skjulte forhold, dårlig tilgjengelighet eller avvik i underlaget kan øke tidsbruk og materialkostnad. Ved usikkerhet anbefales befaring før prisen bekreftes.`
 
   const tilbudstekst = `TILBUD${input.kundenavn ? ` – ${input.kundenavn}` : ''}
 
-Jobbtype: ${input.jobbType}
-Omfang: ${input.romstorrelseM2} m²${input.beskrivelse ? `\nBeskrivelse: ${input.beskrivelse}` : ''}
+Jobbtype: ${input.jobbType}${input.beskrivelse ? `\nBeskrivelse: ${input.beskrivelse}` : ''}
 
-Vi tilbyr å utføre oppdraget til en fastpris på kr ${pris.toLocaleString('nb-NO')},-.
+Omfang:
+${sum.linjer.map(linjeTekst).join('\n')}
 
-Estimert tidsbruk: ${tidsbrukTimer} timer.
-Inkludert materialer: ${materialforbruk}
+Samlet fastpris: kr ${formatKr(sum.prisKr)},-
+Estimert tidsbruk: ${sum.timer} timer.
 
-Prisen inkluderer arbeid og materialer som beskrevet over. Eventuelle tillegg utover avtalt omfang avtales særskilt før arbeid igangsettes.
+Prisen inkluderer arbeid og materialer som beskrevet over. Tillegg utover avtalt
+omfang avtales særskilt før arbeidet igangsettes.
 
 Tilbudet er gyldig i 14 dager.
 
 Med vennlig hilsen`
 
   return {
-    pris,
-    tidsbrukTimer,
+    pris: sum.prisKr,
+    tidsbrukTimer: sum.timer,
     materialforbruk,
-    materialkostTotal,
-    marginProsent,
-    marginKr,
+    materialkostTotal: sum.materialKr,
+    marginProsent: sum.marginProsent,
+    marginKr: sum.marginKr,
     risikoanalyse,
     tilbudstekst,
-    kilde: 'lokalt-estimat',
+    linjer: sum.linjer,
+    arbeidKr: sum.arbeidKr,
+    kostKr: sum.kostKr,
+    advarsler: sum.linjer.map((l) => l.advarsel).filter((a): a is string => Boolean(a)),
   }
 }
 
 export async function genererTilbud(input: TilbudInput): Promise<TilbudResult> {
+  const sum = beregnTilbud(input.jobbType, input.linjer ?? [], input.timepris, input.marginProsent)
+
+  if (sum.linjer.length === 0) {
+    throw new Error('Tilbudet har ingen gyldige linjer.')
+  }
+
+  const basis = malbasertTekst(input, sum)
   const apiKey = process.env.OPENAI_API_KEY
 
   if (!apiKey || apiKey.startsWith('sk-mock')) {
-    return beregnLokaltEstimat(input)
+    return { ...basis, kilde: 'lokalt-estimat' }
   }
 
   const controller = new AbortController()
@@ -111,11 +140,17 @@ export async function genererTilbud(input: TilbudInput): Promise<TilbudResult> {
             role: 'user',
             content: JSON.stringify({
               jobbType: input.jobbType,
-              romstorrelseM2: input.romstorrelseM2,
-              timepris: input.timepris,
-              materialkost: input.materialkost,
-              beskrivelse: input.beskrivelse || 'Ingen ytterligere beskrivelse oppgitt.',
               kundenavn: input.kundenavn || undefined,
+              beskrivelse: input.beskrivelse || 'Ingen ytterligere beskrivelse oppgitt.',
+              omfang: sum.linjer.map((l) => ({
+                arbeid: l.navn,
+                antall: l.antall,
+                enhet: l.enhetstekst,
+                pris: l.prisKr,
+              })),
+              samletPris: sum.prisKr,
+              tidsbrukTimer: sum.timer,
+              materialkostnad: sum.materialKr,
             }),
           },
         ],
@@ -128,33 +163,33 @@ export async function genererTilbud(input: TilbudInput): Promise<TilbudResult> {
 
     const data = await response.json()
     const raw = data.choices?.[0]?.message?.content
-
     if (!raw) {
       throw new Error('Tomt svar fra AI-modellen')
     }
 
     const parsed = JSON.parse(raw)
+    const tekst = String(parsed.tilbudstekst ?? '')
 
-    const result: TilbudResult = {
-      pris: Number(parsed.pris),
-      tidsbrukTimer: Number(parsed.tidsbrukTimer),
-      materialforbruk: String(parsed.materialforbruk),
-      materialkostTotal: Number(parsed.materialkostTotal),
-      marginProsent: Number(parsed.marginProsent),
-      marginKr: Number(parsed.marginKr),
+    if (!tekst || !String(parsed.risikoanalyse ?? '')) {
+      throw new Error('Ufullstendig tekst fra AI-modellen')
+    }
+
+    // Siste skanse: nevner teksten et annet totalbeløp enn det vi regnet ut,
+    // er den ubrukelig uansett hvor godt den er skrevet. Da tar malen over.
+    if (!tekst.includes(formatKr(sum.prisKr))) {
+      throw new Error('AI-teksten gjengir ikke prisen som ble regnet ut')
+    }
+
+    return {
+      ...basis,
+      materialforbruk: String(parsed.materialforbruk ?? basis.materialforbruk),
       risikoanalyse: String(parsed.risikoanalyse),
-      tilbudstekst: String(parsed.tilbudstekst),
+      tilbudstekst: tekst,
       kilde: 'ai',
     }
-
-    if (Object.values(result).some((v) => v === undefined || (typeof v === 'number' && Number.isNaN(v)))) {
-      throw new Error('Ufullstendig JSON fra AI-modellen')
-    }
-
-    return result
   } catch (err) {
-    console.error('AI-kall feilet, faller tilbake til lokalt estimat:', err)
-    return beregnLokaltEstimat(input)
+    console.error('AI-tekst feilet, bruker malbasert tekst:', err)
+    return { ...basis, kilde: 'lokalt-estimat' }
   } finally {
     clearTimeout(timeout)
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { genererTilbud, TilbudInput } from '@/lib/ai'
+import { hentOperasjon, TilbudLinjeInput } from '@/lib/priser'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -12,35 +13,63 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Partial<TilbudInput>
 
-    if (!body.jobbType || !body.romstorrelseM2 || !body.timepris) {
+    const jobbType = String(body.jobbType ?? '')
+    const timepris = Number(body.timepris)
+
+    if (!jobbType || !timepris) {
       return NextResponse.json(
-        { error: 'Mangler nødvendige felt: jobbType, romstorrelseM2 og timepris er påkrevd.' },
+        { error: 'Mangler nødvendige felt: jobbType og timepris er påkrevd.' },
         { status: 400 }
       )
     }
 
+    if (Number.isNaN(timepris) || timepris <= 0 || timepris > 100000) {
+      return NextResponse.json({ error: 'Ugyldig timepris.' }, { status: 400 })
+    }
+
+    if (!Array.isArray(body.linjer) || body.linjer.length === 0) {
+      return NextResponse.json({ error: 'Legg til minst én linje i tilbudet.' }, { status: 400 })
+    }
+
+    const linjer: TilbudLinjeInput[] = []
+    for (const rå of body.linjer) {
+      const operasjonId = String(rå?.operasjonId ?? '')
+      const antall = Number(rå?.antall)
+
+      if (!hentOperasjon(jobbType, operasjonId)) {
+        return NextResponse.json(
+          { error: `Ukjent arbeidsoperasjon for ${jobbType}: ${operasjonId}` },
+          { status: 400 }
+        )
+      }
+
+      if (Number.isNaN(antall) || antall <= 0 || antall > 100000) {
+        return NextResponse.json(
+          { error: 'Antall må være et positivt tall under 100 000 på hver linje.' },
+          { status: 400 }
+        )
+      }
+
+      const materialPerEnhet = rå?.materialPerEnhet === undefined ? undefined : Number(rå.materialPerEnhet)
+      if (materialPerEnhet !== undefined && (Number.isNaN(materialPerEnhet) || materialPerEnhet < 0 || materialPerEnhet > 1000000)) {
+        return NextResponse.json({ error: 'Ugyldig materialkostnad på en av linjene.' }, { status: 400 })
+      }
+
+      linjer.push({ operasjonId, antall, materialPerEnhet })
+    }
+
+    const marginProsent = body.marginProsent === undefined ? undefined : Number(body.marginProsent)
+    if (marginProsent !== undefined && (Number.isNaN(marginProsent) || marginProsent < 0 || marginProsent >= 100)) {
+      return NextResponse.json({ error: 'Margin må være mellom 0 og 99 prosent.' }, { status: 400 })
+    }
+
     const input: TilbudInput = {
-      jobbType: String(body.jobbType),
-      romstorrelseM2: Number(body.romstorrelseM2),
-      timepris: Number(body.timepris),
-      materialkost: Number(body.materialkost ?? 0),
+      jobbType,
+      timepris,
+      linjer,
+      marginProsent,
       beskrivelse: body.beskrivelse ? String(body.beskrivelse) : '',
       kundenavn: body.kundenavn ? String(body.kundenavn) : '',
-    }
-
-    if (
-      Number.isNaN(input.romstorrelseM2) ||
-      Number.isNaN(input.timepris) ||
-      Number.isNaN(input.materialkost) ||
-      input.romstorrelseM2 <= 0 ||
-      input.timepris <= 0 ||
-      input.materialkost < 0
-    ) {
-      return NextResponse.json({ error: 'Ugyldige tallverdier i input.' }, { status: 400 })
-    }
-
-    if (input.romstorrelseM2 > 100000 || input.timepris > 100000 || input.materialkost > 100000000) {
-      return NextResponse.json({ error: 'Verdiene er urealistisk høye. Sjekk tallene og prøv igjen.' }, { status: 400 })
     }
 
     const result = await genererTilbud(input)

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { TilbudInput, TilbudResult } from '@/lib/ai'
 import { formatKr } from '@/lib/format'
+import { omfangTekst } from '@/lib/priser'
 import { useFirma, type Firma } from '@/components/FirmaProvider'
 import Card from '@/components/ui/Card'
 import Textarea from '@/components/ui/Textarea'
@@ -149,7 +150,7 @@ export default function ResultCard({ resultat, input, tilbudId }: ResultCardProp
         <div className="text-sm font-bold text-black/50 uppercase tracking-wide mb-1">Totalpris</div>
         <div className="text-5xl md:text-6xl font-black text-blue">{formatKr(resultat.pris)}</div>
         <div className="text-sm text-black/50 mt-2">
-          {input.jobbType} · {input.romstorrelseM2} m²
+          {input.jobbType} · {omfangTekst(input.jobbType, input.linjer, input.romstorrelseM2)}
           {input.kundenavn ? ` · ${input.kundenavn}` : ''}
           {resultat.kilde === 'lokalt-estimat' && ' · Lokalt estimat (ingen API-nøkkel satt)'}
         </div>
@@ -170,6 +171,37 @@ export default function ResultCard({ resultat, input, tilbudId }: ResultCardProp
           <div className="text-sm text-black/50 mt-1">{formatKr(resultat.marginKr)}</div>
         </Card>
       </div>
+
+      {resultat.linjer && resultat.linjer.length > 0 && (
+        <Card>
+          <div className="text-sm font-bold text-black/50 uppercase tracking-wide mb-3">Regnestykket</div>
+          <div className="space-y-3">
+            {resultat.linjer.map((l) => (
+              <div key={l.operasjonId + l.antall} className="pb-3 border-b border-black/10 last:border-0 last:pb-0">
+                <div className="flex justify-between gap-4 font-bold">
+                  <span>
+                    {l.navn} — {l.antall} {l.enhetstekst}
+                  </span>
+                  <span className="shrink-0">{formatKr(l.prisKr)}</span>
+                </div>
+                <div className="text-sm text-black/50 mt-1">
+                  {l.timer} t arbeid ({formatKr(l.arbeidKr)}) + materialer ({formatKr(l.materialKr)}) ={' '}
+                  {formatKr(l.prisPerEnhet)} per {l.enhetstekst}
+                </div>
+                {l.advarsel && (
+                  <div className="mt-2 text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2">
+                    {l.advarsel}
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="pt-2 text-sm text-black/50">
+              Arbeid {formatKr(resultat.arbeidKr ?? 0)} + materialer {formatKr(resultat.materialkostTotal)} + margin{' '}
+              {formatKr(resultat.marginKr)} = <strong className="text-black">{formatKr(resultat.pris)}</strong>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card>
         <div className="text-sm font-bold text-black/50 uppercase tracking-wide mb-2">Materialforbruk</div>

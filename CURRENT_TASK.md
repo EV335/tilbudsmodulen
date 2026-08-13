@@ -906,6 +906,60 @@ kobles på Vercel, ville de begynt å POSTe hele event-strømmen mot forsiden.
 Verifisert via `GET /v1/webhook_endpoints` og `/v2/core/event_destinations`:
 de to gamle står `disabled`, vår står `enabled` med 3 events.
 
+### 22b. Kalkulatoren bygget om — prismodellen matchet ikke virkeligheten — 2026-08-13
+
+Kollegatest ga tilbakemelding om at tallene var feil: en jobb til ca. 34 000 kr
+kom ut på 100 000. Flere kollegaer, ulike fag. Reproduserte og fant **tre feil**,
+ikke én feiljustert sats:
+
+1. **AI-en regnet prisen, og kunne ikke regne.** Sju av sju testkall mot
+   `gpt-4o-mini` ga aritmetisk umulige svar — `pris` stemte ikke med
+   `timer × timepris + materialer + margin` i et eneste tilfelle, med avvik opp
+   til 52 500 kr. Samme jobb ga 0,34x eller 1,45x av husmodellen. Marginen appen
+   viste håndverkeren var oppdiktet. Ingenting validerte AI-svaret før det gikk
+   ut til kunden.
+2. **Alle fag delte ett `romstørrelse i m²`-felt.** Maler prises per m²
+   veggflate, gulvlegger per m² gulv, elektriker per punkt, rørlegger som
+   fastpris per jobb, bilpleie per bil. Feltet sa heller ikke om m² var gulv
+   eller vegg — en faktor 2,5 helt alene. (Bruker påpekte selv at tak og vegg må
+   kunne oppgis hver for seg; det er nå egne linjer.)
+3. **Håndverkeren så ingen utregning** — bare en pris, umulig å ettergå.
+
+**Målt mot marked før ombygging:** maler 511 kr/m² mot marked 140–280, gulv
+1 361 kr/m² mot 150–350 i arbeid, mens rørlegger lå 2–3x for LAVT (38 929 kr for
+et bad der markedet er 65 000–125 000).
+
+**Ny modell (valgt av bruker: enhetspris per fag + AI kun til tekst):**
+- Et tilbud er nå **linjer**, hver med egen enhet: m² vegg, m² tak, m² gulv,
+  punkt, stk, løpemeter, time.
+- Det som er kalibrert er `timerPerEnhet` — produktivitet, ikke pris. Timepris og
+  margin er håndverkerens egne, så tallet blir deres eget.
+- `markedLav/markedHoy` brukes ikke i utregningen, kun til å varsle når prisen
+  havner utenfor det kunden finner andre steder — begge veier.
+- AI-en får det ferdige regnestykket og skriver kun teksten. Gjengir teksten et
+  annet totalbeløp enn det som ble regnet ut, forkastes den og malen tar over.
+- Skjemaet viser regnestykket live, og resultatsiden viser det per linje.
+- `marginSomPaaslag()` viser at 25 % margin = 33 % påslag, så ingen blir
+  overrasket av dekningsgrad-formelen.
+
+**Verifisert:** `tsc --noEmit` rent, `next build` rent, dev-server kjører uten
+feil. Kalibreringstest kjørt mot alle operasjoner: **alle markedsforankrede
+satser lander innenfor båndet** (maler vegg 173 kr/m² mot 140–280, flis
+1 432 mot 900–1 600, elektrisk punkt 1 786 mot 1 200–2 000, rørleggerdel bad
+107 857 mot 65 000–125 000).
+
+**Ikke gjort:** ingen har klikket gjennom skjemaet ennå — `/calc` krever
+innlogging, og jeg utløser ikke magic-link til brukerens innboks. Malervennen
+skal ta en runde i praksis.
+
+**Trenger fagperson:** sju satser står som `anslag` uten markedsdata (sparkling,
+lister, membran, bytte WC/servant, bilpleie). De gir varsel i appen. Se
+`docs/priser.md`.
+
+**Bakoverkompatibelt:** gamle tilbud i historikken har `romstorrelseM2` og ingen
+linjer. `omfangTekst()` faller tilbake på det gamle feltet, så historikken
+fortsetter å vise riktig.
+
 ## ⚠️ GJENSTÅR FØR KOLLEGAENE INVITERES
 
 1. ~~Verifiser env-variablene~~ — **gjort.** Verifisert mot den deployede

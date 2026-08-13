@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { LagretTilbud } from '@/lib/historikk'
 import { formatKr, formatDatoTid } from '@/lib/format'
+import { omfangTekst } from '@/lib/priser'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -114,7 +115,8 @@ export default function HistorikkPage() {
                 {tilbud.input.kundenavn ? ` · ${tilbud.input.kundenavn}` : ''}
               </div>
               <div className="text-sm text-black/50">
-                {tilbud.input.romstorrelseM2} m² · {formatDatoTid(tilbud.opprettet)}
+                {omfangTekst(tilbud.input.jobbType, tilbud.input.linjer, tilbud.input.romstorrelseM2)} ·{' '}
+                {formatDatoTid(tilbud.opprettet)}
               </div>
             </button>
             <div className="flex items-center gap-4 shrink-0">
