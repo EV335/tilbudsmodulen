@@ -102,6 +102,29 @@ lander **alle markedsforankrede satser innenfor båndet**:
 | Sikringsskap | 21 714 kr | 15 000–25 000 |
 | Rørleggerdel bad | 107 857 kr | 65 000–125 000 |
 
+## Den rapporterte saken, reprodusert
+
+Kollegaen meldte at en jobb til rundt 34 000 kr kom ut på 100 000. Med den gamle
+modellen, der en maler taster inn **flaten han faktisk maler** i et felt som het
+«romstørrelse» og var kalibrert for gulvareal:
+
+| Veggflate | Marked | Gammel app | Ny app |
+|---|---|---|---|
+| 60 m² | 8 400–16 800 | 31 200 | **12 200** ✓ |
+| 130 m² | 18 200–36 400 | 67 600 | **26 433** ✓ |
+| 200 m² | 28 000–56 000 | **104 000** | **40 667** ✓ |
+
+200 m² veggflate ga **104 000 kr** i den gamle appen, mot et marked på
+28 000–56 000. Det er saken som ble meldt.
+
+Feilen var ikke at satsen var litt for høy — den lå **konsekvent 1,9× over
+toppen av markedet uansett størrelse**, fordi modellen var lineær i feil enhet.
+Ett ord i en feltetikett, en faktor tre i tilbudet.
+
+En hel leilighet — 130 m² vegg + 70 m² tak — gir nå 48 133 kr på 37 timer, mot
+et marked på 35 700–64 400. Den jobben kunne den gamle modellen ikke uttrykke i
+det hele tatt: ett felt, ingen mulighet til å skille tak fra vegg.
+
 ## Satser som IKKE er markedsverifisert
 
 Disse står med `kilde: 'anslag'` i [lib/priser.ts](../lib/priser.ts) og gir et
