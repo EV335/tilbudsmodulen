@@ -2,7 +2,17 @@
 
 import { useMemo, useState } from 'react'
 import { TilbudInput } from '@/lib/ai'
-import { FAG, FAGNAVN, hentFag, hentOperasjon, beregnTilbud, marginSomPaaslag, ENHETSTEKST } from '@/lib/priser'
+import {
+  FAG,
+  FAGNAVN,
+  hentFag,
+  hentOperasjon,
+  beregnTilbud,
+  marginSomPaaslag,
+  gjeldendeSats,
+  ENHETSTEKST,
+  type Prissatser,
+} from '@/lib/priser'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
@@ -26,24 +36,28 @@ interface InputFormProps {
   onSubmit: (input: TilbudInput) => void
   loading: boolean
   error?: string | null
+  /** Brukerens egne satser. Tom for den som ikke har endret noe. */
+  satser?: Prissatser
 }
 
-function nyLinje(jobbType: string, operasjonId?: string): LinjeSkjema {
+function nyLinje(jobbType: string, satser?: Prissatser, operasjonId?: string): LinjeSkjema {
   const fag = hentFag(jobbType)
   const op = operasjonId ? hentOperasjon(jobbType, operasjonId) : fag.operasjoner[0]
+  const valgt = op ?? fag.operasjoner[0]
+  const sats = gjeldendeSats(valgt, satser)
   return {
     id: ++linjeTeller,
-    operasjonId: op?.id ?? fag.operasjoner[0].id,
+    operasjonId: valgt.id,
     antall: '',
-    materialPerEnhet: String(op?.materialPerEnhet ?? 0),
+    materialPerEnhet: String(sats.materialPerEnhet),
   }
 }
 
-export default function InputForm({ onSubmit, loading, error }: InputFormProps) {
+export default function InputForm({ onSubmit, loading, error, satser }: InputFormProps) {
   const [jobbType, setJobbType] = useState('Maler')
   const [timepris, setTimepris] = useState('')
   const [margin, setMargin] = useState(String(FAG.Maler.marginProsent))
-  const [linjer, setLinjer] = useState<LinjeSkjema[]>([nyLinje('Maler')])
+  const [linjer, setLinjer] = useState<LinjeSkjema[]>([nyLinje('Maler', satser)])
   const [beskrivelse, setBeskrivelse] = useState('')
   const [kundenavn, setKundenavn] = useState('')
 
@@ -53,10 +67,17 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
     label: `${o.navn} (per ${ENHETSTEKST[o.enhet]})`,
   }))
 
+  // Satsen sendes med hver linje som et øyeblikksbilde, slik at tilbudet kan
+  // etterregnes senere selv om brukeren endrer satsene sine i mellomtiden.
+  function satsFor(operasjonId: string): number | undefined {
+    const op = hentOperasjon(jobbType, operasjonId)
+    return op ? gjeldendeSats(op, satser).timerPerEnhet : undefined
+  }
+
   function byttFag(nyttFag: string) {
     setJobbType(nyttFag)
     setMargin(String(hentFag(nyttFag).marginProsent))
-    setLinjer([nyLinje(nyttFag)])
+    setLinjer([nyLinje(nyttFag, satser)])
   }
 
   function endreLinje(index: number, endring: Partial<LinjeSkjema>) {
@@ -67,7 +88,8 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
         // Bytter du operasjon, skal materialsatsen følge den nye operasjonen —
         // ellers står 450 kr/m² flis igjen på en malerlinje.
         if (endring.operasjonId && endring.operasjonId !== l.operasjonId) {
-          oppdatert.materialPerEnhet = String(hentOperasjon(jobbType, endring.operasjonId)?.materialPerEnhet ?? 0)
+          const nyOp = hentOperasjon(jobbType, endring.operasjonId)
+          oppdatert.materialPerEnhet = nyOp ? String(gjeldendeSats(nyOp, satser).materialPerEnhet) : '0'
         }
         return oppdatert
       })
@@ -85,6 +107,7 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
       .map((l) => ({
         operasjonId: l.operasjonId,
         antall: Number(l.antall),
+        timerPerEnhet: satsFor(l.operasjonId),
         materialPerEnhet: l.materialPerEnhet === '' ? undefined : Number(l.materialPerEnhet),
       }))
     if (gyldige.length === 0) return null
@@ -102,6 +125,7 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
         .map((l) => ({
           operasjonId: l.operasjonId,
           antall: Number(l.antall),
+          timerPerEnhet: satsFor(l.operasjonId),
           materialPerEnhet: l.materialPerEnhet === '' ? undefined : Number(l.materialPerEnhet),
         })),
       beskrivelse,
@@ -150,7 +174,7 @@ export default function InputForm({ onSubmit, loading, error }: InputFormProps) 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-slate-900">Hva skal gjøres?</h3>
-          <Button type="button" variant="link" onClick={() => setLinjer((f) => [...f, nyLinje(jobbType)])}>
+          <Button type="button" variant="link" onClick={() => setLinjer((f) => [...f, nyLinje(jobbType, satser)])}>
             + Legg til linje
           </Button>
         </div>

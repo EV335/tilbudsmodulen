@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import InputForm from '@/components/InputForm'
 import { TilbudInput } from '@/lib/ai'
+import type { Prissatser } from '@/lib/priser'
 import Section from '@/components/ui/Section'
 import Button from '@/components/ui/Button'
 
@@ -13,6 +14,17 @@ export default function CalcPage() {
   const { status } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [satser, setSatser] = useState<Prissatser>({})
+
+  // Brukerens egne satser. Feiler kallet, regner appen videre med standardene —
+  // det er bedre enn en kalkulator som ikke starter.
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    fetch('/api/priser')
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => setSatser(data ?? {}))
+      .catch(() => setSatser({}))
+  }, [status])
 
   async function handleSubmit(input: TilbudInput) {
     setLoading(true)
@@ -62,8 +74,15 @@ export default function CalcPage() {
   return (
     <Section>
       <h1 className="text-3xl md:text-4xl font-black mb-2">Beregn tilbud</h1>
-      <p className="text-white/70 mb-8">Fyll inn jobben under, så regner vi ut pris, tid og materialer.</p>
-      <InputForm onSubmit={handleSubmit} loading={loading} error={error} />
+      <p className="text-white/70 mb-4">Fyll inn jobben under, så regner vi ut pris, tid og materialer.</p>
+      <p className="text-white/50 text-sm mb-8">
+        Stemmer ikke tidsbruken med måten du jobber på?{' '}
+        <a href="/innstillinger/priser" className="underline hover:text-white">
+          Juster dine egne satser
+        </a>
+        .
+      </p>
+      <InputForm onSubmit={handleSubmit} loading={loading} error={error} satser={satser} />
     </Section>
   )
 }

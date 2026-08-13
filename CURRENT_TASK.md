@@ -1026,6 +1026,50 @@ appen — tankestreken er nå på plass: «130 m² veggflate - kr 26 433,-».
 PDF-feilen hadde gått rett til kundene uten at noen så den før en kunde med
 bindestrek i navnet klaget.
 
+### 25. Markedsanalyse og egen prisbok — 2026-08-13
+
+**Markedet er delt i to, med et tomrom i midten:**
+
+| Segment | Hva de gjør | Pris |
+|---|---|---|
+| Fagsystemer (Cordel, Håndverksdata, Ordrestyring) | Full kalkulasjon med Norsk Prisbok, prosjektstyring, FDV | **1 290–2 499 kr per bruker per måned** |
+| Fakturaprogrammer (MinFaktura, Conta, Debet, Fiken) | Sender faktura, fører regnskap | 0–229 kr/mnd |
+
+**Hullet:** fakturaprogrammene starter *etter* at prisen er bestemt. Verktøyet
+som svarer på «hva skal jeg ta betalt?» koster 1 290 kr i måneden og er bygget
+for firmaer med ansatte. Enkeltpersonforetaket står igjen med kalkulatoren i
+hodet — og underpriser. Rørlegger-funnet vårt viste det svart på hvitt:
+modellen lå 2–3x for LAVT mot marked før ombyggingen.
+
+**Posisjonering:** prisbeslutning for enkeltpersonforetak, til
+fakturaprogram-pris. Cordels vollgrav er Norsk Prisbok. Vår må være
+**håndverkerens egen prisbok** — og den kunne ikke engang redigeres før nå.
+
+**Bygget: egne satser per bruker.**
+- Migrasjon `20260813_prissatser.sql` — ny tabell `prissatser` (idempotent).
+  **Må kjøres i Supabase SQL Editor.**
+- `/innstillinger/priser` — «Mine satser». Hver operasjon kan justeres, viser
+  hva satsen gir per enhet mot markedsbåndet mens du skriver, og har
+  «Tilbake til standard».
+- Kun endrede verdier lagres. Rører du ikke en sats, følger du fortsatt
+  oppdaterte markedstall i koden. Nullstilling sletter raden.
+- **Satsen lagres MED tilbudet** som et øyeblikksbilde (`timerPerEnhet` per
+  linje). Endrer håndverkeren satsen i morgen, kan et tilbud sendt i dag
+  fortsatt etterregnes og gi samme sum — og `verifiserPris()` fortsetter å
+  virke.
+- Uten migrasjonen kjørt: appen faller tilbake på standardsatsene i stedet for
+  å feile. Lagring vil da gi feilmelding.
+
+**Neste steg for vollgraven — etterkalkyle.** Registrer faktisk tidsbruk etter
+endt jobb, sammenlign med estimatet, og la appen foreslå justering av
+`timerPerEnhet`. Da blir prisboken selvlærende, og det er noe ingen i det
+billige segmentet har. Fundamentet er på plass: satsen ligger allerede per
+bruker og per operasjon, og tilbudet bærer med seg satsen det ble laget med.
+
+**To ting som fortsatt stopper ekte pengebruk:** alle betalinger går til
+eierens Stripe-konto uansett hvem som fakturerer (krever Stripe Connect), og
+det finnes ingen regnskapseksport til Fiken/Tripletex.
+
 ## ⚠️ GJENSTÅR FØR KOLLEGAENE INVITERES
 
 1. ~~Verifiser env-variablene~~ — **gjort.** Verifisert mot den deployede

@@ -55,7 +55,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Ugyldig materialkostnad på en av linjene.' }, { status: 400 })
       }
 
-      linjer.push({ operasjonId, antall, materialPerEnhet })
+      // Satsen følger med linjen som et øyeblikksbilde. Klienten har hentet
+      // brukerens egne satser fra /api/priser og sender dem hit, slik at det som
+      // vises, det som regnes og det som senere etterregnes ved lagring alltid
+      // er samme tall — også hvis brukeren endrer satsen sin i morgen.
+      const timerPerEnhet = rå?.timerPerEnhet === undefined ? undefined : Number(rå.timerPerEnhet)
+      if (timerPerEnhet !== undefined && (Number.isNaN(timerPerEnhet) || timerPerEnhet < 0 || timerPerEnhet > 500)) {
+        return NextResponse.json({ error: 'Ugyldig tidsbruk per enhet på en av linjene.' }, { status: 400 })
+      }
+
+      linjer.push({ operasjonId, antall, timerPerEnhet, materialPerEnhet })
     }
 
     const marginProsent = body.marginProsent === undefined ? undefined : Number(body.marginProsent)

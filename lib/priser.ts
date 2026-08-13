@@ -273,11 +273,32 @@ export function hentOperasjon(jobbType: string, operasjonId: string): Operasjon 
   return hentFag(jobbType).operasjoner.find((o) => o.id === operasjonId)
 }
 
-/** Én linje slik brukeren fyller den ut. `materialPerEnhet` overstyrer satsen når satt. */
+/**
+ * Én linje slik brukeren fyller den ut.
+ *
+ * `timerPerEnhet` og `materialPerEnhet` er øyeblikksbilder av satsene som gjaldt
+ * da tilbudet ble laget. De lagres MED tilbudet, ikke bare som en peker til
+ * dagens satser — endrer håndverkeren satsen sin i morgen, skal et tilbud sendt
+ * i dag fortsatt kunne regnes etter og vise samme sum.
+ */
 export interface TilbudLinjeInput {
   operasjonId: string
   antall: number
+  timerPerEnhet?: number
   materialPerEnhet?: number
+}
+
+/** Brukerens egne satser, hentet fra `prissatser`-tabellen. Kun det som er endret. */
+export type Prissatser = Record<string, { timerPerEnhet?: number; materialPerEnhet?: number }>
+
+/** Satsene som faktisk gjelder for en operasjon: standard, overstyrt av brukerens egne. */
+export function gjeldendeSats(op: Operasjon, satser?: Prissatser) {
+  const egen = satser?.[op.id]
+  return {
+    timerPerEnhet: egen?.timerPerEnhet ?? op.timerPerEnhet,
+    materialPerEnhet: egen?.materialPerEnhet ?? op.materialPerEnhet,
+    erEndret: egen?.timerPerEnhet !== undefined || egen?.materialPerEnhet !== undefined,
+  }
 }
 
 /** Én ferdig utregnet linje — alle mellomregninger er med, slik at tallet kan ettergås. */
@@ -319,7 +340,9 @@ export function beregnLinje(
   if (!Number.isFinite(timepris) || timepris <= 0) return null
 
   const materialPerEnhet = linje.materialPerEnhet ?? op.materialPerEnhet
-  const timer = rund(linje.antall * op.timerPerEnhet)
+  const timerPerEnhet = linje.timerPerEnhet ?? op.timerPerEnhet
+  if (!Number.isFinite(timerPerEnhet) || timerPerEnhet < 0) return null
+  const timer = rund(linje.antall * timerPerEnhet)
   const arbeidKr = Math.round(timer * timepris)
   const materialKr = Math.round(linje.antall * materialPerEnhet)
   const kostKr = arbeidKr + materialKr
@@ -343,7 +366,7 @@ export function beregnLinje(
     enhet: op.enhet,
     enhetstekst: ENHETSTEKST[op.enhet],
     antall: linje.antall,
-    timerPerEnhet: op.timerPerEnhet,
+    timerPerEnhet,
     timer,
     arbeidKr,
     materialPerEnhet,

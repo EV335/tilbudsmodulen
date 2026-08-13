@@ -12,6 +12,7 @@ const NAV_LENKER = [
   { href: '/historikk', label: 'Mine tilbud' },
   { href: '/historikk/invoices', label: 'Fakturaer' },
   { href: '/kunder', label: 'Kunder' },
+  { href: '/innstillinger/priser', label: 'Mine satser' },
   { href: '/innstillinger/firma', label: 'Mitt firma' },
 ]
 
