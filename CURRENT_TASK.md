@@ -1120,6 +1120,83 @@ byggfeil eller kjøretidsfeil. Det ble funnet ved å sammenligne migrasjonen med
 hva de andre tabellene faktisk gjør i basen. Migrasjoner bør leses mot
 produksjonsskjemaet, ikke bare mot seg selv.
 
+### 27. Bug-runde i prislaget — 2026-08-14
+
+**Halvparten av en fiks fra punkt 24 var aldri fullført.** I `beregnLinje` står
+de to satsene ved siden av hverandre. `timerPerEnhet` var vaktet mot NaN,
+Infinity og negative verdier. `materialPerEnhet` var ikke vaktet i det hele
+tatt.
+
+| Inndata | Før | Nå |
+|---|---|---|
+| `materialPerEnhet: NaN` | `prisKr = NaN` | linja avvises |
+| `materialPerEnhet: Infinity` | `prisKr = Infinity` | linja avvises |
+| `materialPerEnhet: -5000` | `prisKr = -325 833` | linja avvises |
+| `antall: Infinity` | `prisKr = Infinity`, `prisPerEnhet = NaN` | linja avvises |
+
+**Den negative varianten var den farlige.** NaN og Infinity blir `null` i JSON,
+så `verifiserPris` fanget dem ved lagring. En negativ materialsats gjør det
+ikke: serveren regner ut nøyaktig det samme negative tallet som klienten
+sendte, de matcher, og **tilbudet lagres**. Derfra kan det faktureres. Det er
+det samme hullet punkt 24 lukket for prisen, latt stå åpent for satsen den
+regnes av.
+
+`antall: Infinity` slapp gjennom fordi vakten var `antall > 0`, som er sant for
+Infinity. Krever nå et endelig tall.
+
+**Én ugyldig linje forgiftet hele summen** — `beregnTilbud` la NaN til totalen i
+stedet for å la linja falle ut. Nå faller den ut, og de øvrige linjene består.
+
+**Seks nye tester i `scripts/pristest.ts`, 16 totalt.** Alle passerer, `tsc` er
+rent. Den normale utregningen gir fortsatt 48 133 kr — samme tall som ble
+verifisert tre ganger i produksjon i punkt 24.
+
+**Sjekket og funnet rent i samme runde:** mva-modulen (`grunnlag + mva === total`
+holder i begge grener, negativ og NaN-sats faller til 0), og betalingslaget —
+alle tre veiene til Stripe bruker `fakturaBelop(...).total`, ingen bruker
+`amount` direkte, og øre-konverteringen er identisk alle tre steder.
+
+**Ikke fikset, verdt en avgjørelse:** en materialsats på f.eks. `1e21` er et
+endelig, ikke-negativt tall og slipper fortsatt gjennom til en absurd pris.
+Gjennom UI-et er den utilgjengelig — `/api/priser` klamper satsene til 500
+timer og 1 000 000 kr per enhet — men tilbuds-API-et har ingen øvre grense.
+Å sette en der er en forretningsbeslutning: hva er det største beløpet et
+enkelttilbud skal kunne lyde på?
+
+### 28. De offentlige token-rutene — 2026-08-14
+
+`invoices.public_token` er en **uuid**-kolonne, men `hentFakturaByPublicToken`
+sendte hva som helst rett videre til Postgres. Testet mot produksjon:
+
+| Token | Før | Nå |
+|---|---|---|
+| Gyldig uuid, ukjent | 404 «Fant ikke faktura.» | uendret |
+| `abc`, `1`, `not-a-token` | **500** | 404 «Fant ikke faktura.» |
+
+På POST-rutene var svaret dessuten
+`{"error":"Klarte ikke å hente faktura: invalid input syntax for type uuid: \"abc\""}`
+— **rå databasefeil til en uautentisert kaller.** De innloggede rutene
+returnerer generiske meldinger; de offentlige gjorde det ikke.
+
+Vakten ligger i `hentFakturaByPublicToken`, altså det ene stedet alle tre
+offentlige rutene går gjennom. De to POST-rutene logger nå detaljene og svarer
+generisk utad.
+
+**Presisering:** `/betal/[token]` fanger alle feil i én `catch` og viste
+«Fant ikke fakturaen. Sjekk at du har hele lenken.» også før. **Kunden så aldri
+500-en.** Det som faktisk var galt var statuskoden — 500 sier «serveren er
+ødelagt» når ingenting er det, og støyer i overvåkingen — og informasjons-
+lekkasjen mot den som kaller API-et direkte.
+
+**Verifisert mot en kjørende dev-server, ikke bare resonnert:** alle fire
+feilformede token gir 404 på alle tre rutene, et ekte token gir fortsatt 200
+med whitelistet DTO (ingen `user_id`, `customer_id` eller Stripe-id-er), og
+`/betal/[token]` viser samme melding som før.
+
+**Sjekket og funnet rent:** beløpet slås opp server-side i begge de offentlige
+betalingsrutene, status vaktes med `ikkeBetalbarGrunn`, og
+`tilOffentligFaktura` er en ekte whitelist.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
