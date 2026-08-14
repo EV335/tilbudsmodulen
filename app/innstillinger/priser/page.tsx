@@ -133,10 +133,22 @@ function OperasjonRad({
   const [timer, setTimer] = useState(String(sats.timerPerEnhet))
   const [material, setMaterial] = useState(String(sats.materialPerEnhet))
 
+  // Et tomt felt betyr «bruk standarden», ikke null timer. Uten dette ga
+  // Number('') = 0: tømte du feltet og lagret, fikk operasjonen satsen 0 —
+  // altså null arbeid i alle framtidige tilbud, uten at noe så galt ut.
+  const tallEllerNull = (s: string): number | null => (s.trim() === '' ? null : Number(s))
+
   // Viser hva satsen faktisk gir per enhet, med samme funksjon som kalkulatoren.
+  // Samme tolkning som ved lagring, slik at forhåndsvisningen viser det som
+  // faktisk blir lagret.
   const proeve = beregnLinje(
     fagNavn,
-    { operasjonId: op.id, antall: 10, timerPerEnhet: Number(timer), materialPerEnhet: Number(material) },
+    {
+      operasjonId: op.id,
+      antall: 10,
+      timerPerEnhet: tallEllerNull(timer) ?? op.timerPerEnhet,
+      materialPerEnhet: tallEllerNull(material) ?? op.materialPerEnhet,
+    },
     VIS_TIMEPRIS,
     FAG[fagNavn].marginProsent
   )
@@ -202,7 +214,7 @@ function OperasjonRad({
           type="button"
           size="md"
           disabled={!endret || lagrer}
-          onClick={() => onLagre(op.id, Number(timer), Number(material))}
+          onClick={() => onLagre(op.id, tallEllerNull(timer), tallEllerNull(material))}
         >
           {lagrer ? 'Lagrer...' : 'Lagre'}
         </Button>

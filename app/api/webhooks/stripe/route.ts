@@ -146,8 +146,24 @@ export async function POST(req: NextRequest) {
     }
 
     switch (event.type) {
-      case 'checkout.session.completed': {
+      // «completed» betyr at kunden fullførte sesjonen, IKKE at pengene er
+      // kommet. For betalingsmetoder med forsinket oppgjør leverer Stripe dette
+      // eventet med payment_status 'unpaid', og sender
+      // checkout.session.async_payment_succeeded først når oppgjøret er i havn.
+      // Begge Checkout-rutene er kort-bare i dag, så i praksis er status alltid
+      // 'paid' — men uten denne vakten ville dagen noen slår på Vipps eller
+      // bankdebet bety at fakturaen markeres betalt og kunden får kvittering
+      // før pengene finnes.
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded': {
         const session = event.data.object as Stripe.Checkout.Session
+        if (session.payment_status !== 'paid') {
+          console.log(
+            `Stripe-event ${event.id}: sesjon ${session.id} har payment_status ` +
+              `'${session.payment_status}' — venter på async_payment_succeeded.`
+          )
+          break
+        }
         await behandleInvoiceBetalt(session.metadata?.invoiceId, event, 'checkout', session.id, undefined)
         break
       }
