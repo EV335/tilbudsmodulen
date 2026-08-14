@@ -1197,6 +1197,57 @@ med whitelistet DTO (ingen `user_id`, `customer_id` eller Stripe-id-er), og
 betalingsrutene, status vaktes med `ikkeBetalbarGrunn`, og
 `tilOffentligFaktura` er en ekte whitelist.
 
+### 29. Tredje bug-runde — webhook og «Mine satser» — 2026-08-14
+
+**Den viktigste: å tømme et felt i «Mine satser» satte satsen til 0.**
+Feltene er `type="number"`, og lagre-knappen sendte `Number(timer)`. Tømmer du
+feltet blir `e.target.value` en tom streng, og **`Number('') === 0`**. Brukeren
+som tømte «Timer per enhet» for å nullstille, fikk i stedet satsen 0 lagret —
+altså **null arbeid i alle framtidige tilbud på den operasjonen**, uten at noe
+så galt ut.
+
+Det er retningen punkt 25 sier hele produktet finnes for å forhindre:
+håndverkeren underpriser. Her ville appen gjort det for ham.
+
+Tomt felt betyr nå «bruk standarden» (`null`), som er kontrakten
+`lagrePrissats` allerede hadde: begge null sletter raden og faller tilbake på
+`lib/priser.ts`. Forhåndsvisningen bruker samme tolkning, så den viser det som
+faktisk blir lagret. `lesTall` server-side trimmer nå også blanke strenger, og
+avviser typer som ikke er tall eller tallstreng (`Number([])` er 0,
+`Number(true)` er 1).
+
+**Webhooken markerte betalt uten å sjekke `payment_status`.**
+`checkout.session.completed` betyr at kunden fullførte sesjonen, ikke at
+pengene er kommet. For metoder med forsinket oppgjør leverer Stripe eventet med
+`payment_status: 'unpaid'` og sender `checkout.session.async_payment_succeeded`
+når oppgjøret er i havn. Begge Checkout-rutene er kort-bare i dag, så i praksis
+er status alltid `paid` — men dagen noen slår på Vipps eller bankdebet ville
+fakturaen blitt markert betalt og kunden fått kvittering før pengene fantes.
+
+Vakten er lagt inn, og `async_payment_succeeded` håndteres nå av samme gren —
+uten det ville vakten innført en ny bug: en forsinket betaling som aldri ble
+registrert. **Merk:** Stripe-endepunktet i dashboardet lytter på tre eventer
+(se punkt 22). Skal en forsinket betalingsmetode tas i bruk, må
+`checkout.session.async_payment_succeeded` legges til der — koden er klar, men
+abonnementet mangler.
+
+**Verifisert:** `tsc` rent, 16/16 tester, og alle endrede ruter kjørt mot en
+dev-server uten serverfeil — `/innstillinger/priser` gir 307, `/api/priser`
+gir 401, `/betal/abc` gir 200 med vennlig melding, `/api/public/invoices/abc`
+gir 404.
+
+**Ikke verifisert:** selve klikket i «Mine satser» — tøm felt, lagre, se at
+satsen faller tilbake på standarden. Krever innlogging. Endringen er lest og
+kompilerer, men flyten er ikke kjørt.
+
+**Sjekket og funnet rent i webhooken:** idempotency via `stripe_event_id`,
+betaling registreres før statusendring (revisjonsspor), dobbeltbetaling
+varsles, en allerede betalt faktura degraderes ikke av et sent feilet forsøk,
+og PDF/e-post-feil reverserer ikke en reell betaling. Den kjente svakheten står
+igjen og er dokumentert i koden: ryker `maxDuration` under PDF/e-post, stopper
+idempotency-sjekken Stripes nye forsøk, og fakturaen blir stående betalt uten
+PDF. Manuell utvei finnes: `/api/invoices/[id]/resend`.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
