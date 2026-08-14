@@ -1070,6 +1070,44 @@ bruker og per operasjon, og tilbudet bærer med seg satsen det ble laget med.
 eierens Stripe-konto uansett hvem som fakturerer (krever Stripe Connect), og
 det finnes ingen regnskapseksport til Fiken/Tripletex.
 
+## Modenhet — ærlig vurdering per 2026-08-13
+
+| | Score | Kort |
+|---|---|---|
+| Konseptet | **7/10** | Ekte problem, men konkurrerer med etablerte aktører. Vollgraven er tynn til etterkalkylen er på plass. |
+| Funksjonalitet | **6/10** | Hele inntektsløkka virker og er verifisert. Dybden for daglig bruk mangler. |
+| Brukervennlighet | **6/10** | Kalkulatoren er blitt god. Aldri åpnet på mobil — der brukerne faktisk er. |
+| Klar for kollegatest | **7/10** | Ja, i Stripe test-modus. |
+| Klar for ekte kunder og penger | **4/10** | Nei. Se blokkerne under. |
+| Samlet | **6/10** | Som produkt: midt på treet. Som det som er bygget på noen dager: sterkt fundament. |
+
+**Tre ting som stopper ekte pengebruk:**
+1. **Alle betalinger går til eierens Stripe-konto**, uansett hvem som fakturerer.
+   Ikke en bug — en arkitekturbeslutning som krever **Stripe Connect** før noen
+   andre enn eier tar imot penger. Regnskapsmessig uholdbart for kollegaene slik
+   det står.
+2. **Ingen allowlist.** Hvem som helst med adressen kan lage konto og sende
+   fakturaer fra det verifiserte domenet. Ti linjer kode (`signIn`-callback i
+   `lib/auth.ts` + en env-variabel), men ikke gjort.
+3. **Ingen regnskapseksport** til Fiken eller Tripletex. Uten den blir appen et
+   sidespor håndverkeren må dobbeltføre fra.
+
+**Aldri testet:** appen er ikke åpnet på mobil én eneste gang. Håndverkere står
+på byggeplass med telefon. Billig å finne ut, kan flytte brukervennlighet
+begge veier.
+
+## Veikart — i prioritert rekkefølge
+
+1. **Etterkalkyle** — registrer faktisk tidsbruk etter endt jobb, sammenlign med
+   estimatet, foreslå justering av `timerPerEnhet`. Dette er vollgraven: en
+   prisbok som lærer. Ingen i det billige segmentet har det. Fundamentet er
+   allerede lagt (satser per bruker og operasjon, tilbudet bærer sin egen sats).
+2. **Allowlist** før flere kollegaer inviteres.
+3. **Mobiltest** — én runde på telefon.
+4. **Regnskapseksport** til Fiken/Tripletex. Komplementer regnskapsprogrammet,
+   ikke konkurrer med det.
+5. **Stripe Connect** før ekte penger fra flere brukere.
+
 ## ⚠️ GJENSTÅR FØR KOLLEGAENE INVITERES
 
 1. ~~Verifiser env-variablene~~ — **gjort.** Verifisert mot den deployede
@@ -1085,7 +1123,12 @@ det finnes ingen regnskapseksport til Fiken/Tripletex.
    Hele flyten kjørt i produksjon: skjema → server → historikk → PDF, alle tre
    beregningene ga 48 133 kr. Malervennen skal fortsatt ta sin egen runde for å
    vurdere om satsene stemmer med hvordan han jobber.
-5. **Sju satser mangler markedsdata** og står som `anslag` i `lib/priser.ts`:
+5. **⚠️ KJØR MIGRASJONEN `20260813_prissatser.sql`** i Supabase SQL Editor.
+   Uten den finnes ikke tabellen `prissatser`: appen faller tilbake på
+   standardsatsene i stedet for å feile, men «Mine satser» kan ikke lagres.
+   Idempotent, trygg å kjøre om igjen. Dette er den eneste harde blokkeren
+   akkurat nå.
+6. **Sju satser mangler markedsdata** og står som `anslag` i `lib/priser.ts`:
    sparkling, montere lister, membran, bytte WC, bytte servant/kran, polering og
    innvendig rens. De gir varsel i appen. Spørsmålet til fagpersonen er **ikke**
    «hva bør dette koste», men «hvor lang tid bruker du på én enhet» — det er
