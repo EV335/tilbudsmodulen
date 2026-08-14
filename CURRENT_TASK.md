@@ -1070,6 +1070,56 @@ bruker og per operasjon, og tilbudet bærer med seg satsen det ble laget med.
 eierens Stripe-konto uansett hvem som fakturerer (krever Stripe Connect), og
 det finnes ingen regnskapseksport til Fiken/Tripletex.
 
+### 26. Migrasjonen kjørt — og RLS-hullet den hadde — 2026-08-14
+
+**Skjemaet ble revidert mot produksjon før noe ble kjørt.** Alle fem
+migrasjoner sjekket enkeltvis mot live-basen i stedet for mot notatene her:
+20260808, 20260809, 20260810 og 20260811 var alle inne. Kun `prissatser`
+manglet.
+
+**Funn: migrasjonen manglet RLS.** Hver eneste andre tabell i basen — alle 12
+— står med `relrowsecurity = true` og null policyer, slik at all tilgang må gå
+via service_role på serveren. `20260813_prissatser.sql` slo aldri på RLS.
+Tabellen ville dermed ligget åpen for lesing og skriving gjennom PostgREST for
+den som har anon-nøkkelen, og innholdet er håndverkerens egen prisbok — det
+punkt 25 kaller vollgraven. Lagt til før kjøring, mens tabellen ennå ikke
+fantes; etterpå hadde det krevd en ny migrasjon.
+
+Migrasjonen fikk samtidig en **sluttkontroll** i samme mønster som 20260810 og
+20260811 (som begge har en; denne hadde ingen). Den verifiserer tabellen, de
+fem kolonnene appen faktisk skriver til, unique-constrainten som
+`onConflict: 'user_id,operasjon_id'` er avhengig av, og at RLS er på — og
+kaster `exception` hvis noe mangler.
+
+**Kjørt i Supabase SQL Editor 2026-08-14.** `Success. No rows returned`, altså
+passerte alle fire kontrollene. Verifisert etterpå på to uavhengige måter:
+REST-API-et svarer 200 på `prissatser` med service_role, og en spørring mot
+`pg_class` viser at tabellen nå står likt med de elleve andre
+(`rls_pa = true`, `antall_policyer = 0`).
+
+**Skrivebanen er rundtur-testet** mot produksjon med nøyaktig den formen
+`lagrePrissats` bruker — ikke bare skjemaet:
+
+| Test | Resultat |
+|---|---|
+| Upsert med appens kolonnesett | 201, raden lagt inn |
+| Samme upsert om igjen | 200, **samme `id`** — `onConflict` treffer, ingen duplikat |
+| Antall rader etter to upserts | 1 |
+| Negativ `timer_per_enhet` | 400, avvist av `prissatser_ikke_negative` |
+| Delete, som «Tilbake til standard» | 204, tabellen tom igjen |
+
+Testradene er slettet. `prissatser` står tom slik den skal før første bruk.
+
+**Gjenstår fortsatt:** selve UI-et på `/innstillinger/priser` er ikke klikket
+gjennom. Innlogging manglet i nettleserprofilen, og magic-link-flyten er ikke
+noe som skal kjøres på brukerens vegne. Alt under UI-et — API-rutens
+kolonnekontrakt, constrainten, upserten og slettingen — er verifisert.
+
+**Lærdom, samme klasse som punkt 24:** RLS-hullet ga verken typefeil,
+byggfeil eller kjøretidsfeil. Det ble funnet ved å sammenligne migrasjonen med
+hva de andre tabellene faktisk gjør i basen. Migrasjoner bør leses mot
+produksjonsskjemaet, ikke bare mot seg selv.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1123,11 +1173,9 @@ begge veier.
    Hele flyten kjørt i produksjon: skjema → server → historikk → PDF, alle tre
    beregningene ga 48 133 kr. Malervennen skal fortsatt ta sin egen runde for å
    vurdere om satsene stemmer med hvordan han jobber.
-5. **⚠️ KJØR MIGRASJONEN `20260813_prissatser.sql`** i Supabase SQL Editor.
-   Uten den finnes ikke tabellen `prissatser`: appen faller tilbake på
-   standardsatsene i stedet for å feile, men «Mine satser» kan ikke lagres.
-   Idempotent, trygg å kjøre om igjen. Dette er den eneste harde blokkeren
-   akkurat nå.
+5. ~~Kjør migrasjonen `20260813_prissatser.sql`~~ — **gjort 2026-08-14, se
+   punkt 26.** Tabellen `prissatser` finnes i produksjon, med RLS på.
+   **Ikke lagringstestet gjennom appen ennå** — se punkt 26.
 6. **Sju satser mangler markedsdata** og står som `anslag` i `lib/priser.ts`:
    sparkling, montere lister, membran, bytte WC, bytte servant/kran, polering og
    innvendig rens. De gir varsel i appen. Spørsmålet til fagpersonen er **ikke**
