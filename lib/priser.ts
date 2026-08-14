@@ -331,7 +331,9 @@ export function beregnLinje(
   marginProsent: number
 ): BeregnetLinje | null {
   const op = hentOperasjon(jobbType, linje.operasjonId)
-  if (!op || !(linje.antall > 0)) return null
+  // `antall > 0` er sant også for Infinity, som ga pris = Infinity og
+  // prisPerEnhet = NaN (Infinity delt på Infinity). Krev et endelig tall.
+  if (!op || !Number.isFinite(linje.antall) || linje.antall <= 0) return null
 
   // Margin 100 % ga divisjon på null -> pris = Infinity, og over 100 % ga negativ
   // pris. API-et avviser slike verdier, men forhåndsvisningen i skjemaet regnet
@@ -339,9 +341,14 @@ export function beregnLinje(
   if (!Number.isFinite(marginProsent) || marginProsent < 0 || marginProsent >= 100) return null
   if (!Number.isFinite(timepris) || timepris <= 0) return null
 
+  // Begge satsene kommer fra klienten som øyeblikksbilde lagret med tilbudet, og
+  // begge må vaktes likt. `timerPerEnhet` var vaktet, `materialPerEnhet` ikke:
+  // en negativ materialsats ga et negativt tilbud som `verifiserPris` godtok,
+  // fordi serveren regnet ut samme negative tall som klienten sendte inn.
   const materialPerEnhet = linje.materialPerEnhet ?? op.materialPerEnhet
   const timerPerEnhet = linje.timerPerEnhet ?? op.timerPerEnhet
   if (!Number.isFinite(timerPerEnhet) || timerPerEnhet < 0) return null
+  if (!Number.isFinite(materialPerEnhet) || materialPerEnhet < 0) return null
   const timer = rund(linje.antall * timerPerEnhet)
   const arbeidKr = Math.round(timer * timepris)
   const materialKr = Math.round(linje.antall * materialPerEnhet)

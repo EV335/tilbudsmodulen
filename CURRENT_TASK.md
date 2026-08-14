@@ -1120,6 +1120,49 @@ byggfeil eller kjøretidsfeil. Det ble funnet ved å sammenligne migrasjonen med
 hva de andre tabellene faktisk gjør i basen. Migrasjoner bør leses mot
 produksjonsskjemaet, ikke bare mot seg selv.
 
+### 27. Bug-runde i prislaget — 2026-08-14
+
+**Halvparten av en fiks fra punkt 24 var aldri fullført.** I `beregnLinje` står
+de to satsene ved siden av hverandre. `timerPerEnhet` var vaktet mot NaN,
+Infinity og negative verdier. `materialPerEnhet` var ikke vaktet i det hele
+tatt.
+
+| Inndata | Før | Nå |
+|---|---|---|
+| `materialPerEnhet: NaN` | `prisKr = NaN` | linja avvises |
+| `materialPerEnhet: Infinity` | `prisKr = Infinity` | linja avvises |
+| `materialPerEnhet: -5000` | `prisKr = -325 833` | linja avvises |
+| `antall: Infinity` | `prisKr = Infinity`, `prisPerEnhet = NaN` | linja avvises |
+
+**Den negative varianten var den farlige.** NaN og Infinity blir `null` i JSON,
+så `verifiserPris` fanget dem ved lagring. En negativ materialsats gjør det
+ikke: serveren regner ut nøyaktig det samme negative tallet som klienten
+sendte, de matcher, og **tilbudet lagres**. Derfra kan det faktureres. Det er
+det samme hullet punkt 24 lukket for prisen, latt stå åpent for satsen den
+regnes av.
+
+`antall: Infinity` slapp gjennom fordi vakten var `antall > 0`, som er sant for
+Infinity. Krever nå et endelig tall.
+
+**Én ugyldig linje forgiftet hele summen** — `beregnTilbud` la NaN til totalen i
+stedet for å la linja falle ut. Nå faller den ut, og de øvrige linjene består.
+
+**Seks nye tester i `scripts/pristest.ts`, 16 totalt.** Alle passerer, `tsc` er
+rent. Den normale utregningen gir fortsatt 48 133 kr — samme tall som ble
+verifisert tre ganger i produksjon i punkt 24.
+
+**Sjekket og funnet rent i samme runde:** mva-modulen (`grunnlag + mva === total`
+holder i begge grener, negativ og NaN-sats faller til 0), og betalingslaget —
+alle tre veiene til Stripe bruker `fakturaBelop(...).total`, ingen bruker
+`amount` direkte, og øre-konverteringen er identisk alle tre steder.
+
+**Ikke fikset, verdt en avgjørelse:** en materialsats på f.eks. `1e21` er et
+endelig, ikke-negativt tall og slipper fortsatt gjennom til en absurd pris.
+Gjennom UI-et er den utilgjengelig — `/api/priser` klamper satsene til 500
+timer og 1 000 000 kr per enhet — men tilbuds-API-et har ingen øvre grense.
+Å sette en der er en forretningsbeslutning: hva er det største beløpet et
+enkelttilbud skal kunne lyde på?
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
