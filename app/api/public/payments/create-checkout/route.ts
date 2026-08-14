@@ -54,7 +54,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: checkoutSession.url })
   } catch (err) {
     console.error('Feil i /api/public/payments/create-checkout:', err)
-    const message = err instanceof Error ? err.message : 'Klarte ikke å starte betaling.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    // Generisk utad: ruten er uautentisert, og err.message har vært rå
+    // Postgres-tekst («invalid input syntax for type uuid»). Detaljene hører
+    // hjemme i serverloggen, ikke i svaret til en ukjent kaller.
+    return NextResponse.json({ error: 'Klarte ikke å starte betaling.' }, { status: 500 })
   }
 }

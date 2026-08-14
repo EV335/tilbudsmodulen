@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ clientSecret })
   } catch (err) {
     console.error('Feil i /api/public/payments/create-payment-intent:', err)
-    const message = err instanceof Error ? err.message : 'Klarte ikke å starte betaling.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    // Se create-checkout: uautentisert rute, detaljene hører hjemme i loggen.
+    return NextResponse.json({ error: 'Klarte ikke å starte betaling.' }, { status: 500 })
   }
 }
