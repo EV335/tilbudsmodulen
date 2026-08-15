@@ -100,7 +100,25 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
   const margLeft = 56
   const margRight = 56
   const sideBredde = doc.internal.pageSize.getWidth()
+  const tekstBredde = sideBredde - margLeft - margRight
   let y = 64
+
+  // jsPDF bryter ikke tekst selv — den tegner rett videre forbi margen og til
+  // slutt utenfor arket, uten å si fra. Betalingslenken målte 530 pt mot 483 pt
+  // tilgjengelig: den lå 47 pt inne i høyremargen og 9 pt fra å bli kuttet av
+  // arkkanten. En avkortet betalingslenke er ubrukelig for kunden.
+  //
+  // Gjelder også de frie tekstfeltene (firmaadresse, kundenavn, kundeadresse) —
+  // de er korte i dagens data, men ingenting hindrer en lang verdi.
+  // Returnerer ny y, slik at kallstedet kan fortsette å telle nedover.
+  const skrivBrutt = (tekst: string, x: number, yPos: number, linjehoyde = 14): number => {
+    const linjer: string[] = doc.splitTextToSize(tilPdfTekst(tekst), tekstBredde)
+    for (const linje of linjer) {
+      doc.text(linje, x, yPos)
+      yPos += linjehoyde
+    }
+    return yPos
+  }
 
   if (firma?.logo_url) {
     const logo = await hentLogo(firma.logo_url)
@@ -132,8 +150,7 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   if (firma?.adresse) {
-    skriv(firma.adresse, margLeft, y)
-    y += 14
+    y = skrivBrutt(firma.adresse, margLeft, y)
   }
   if (firma?.orgnr) {
     // Mva-registrerte foretak skal oppgi org.nr etterfulgt av MVA.
@@ -148,11 +165,9 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
   skriv('Faktureres til', margLeft, y)
   y += 16
   doc.setFont('helvetica', 'normal')
-  skriv(faktura.kunde?.navn || 'Ukjent kunde', margLeft, y)
-  y += 14
+  y = skrivBrutt(faktura.kunde?.navn || 'Ukjent kunde', margLeft, y)
   if (faktura.kunde?.adresse) {
-    skriv(faktura.kunde.adresse, margLeft, y)
-    y += 14
+    y = skrivBrutt(faktura.kunde.adresse, margLeft, y)
   }
   if (faktura.kunde?.type === 'bedrift' && faktura.kunde?.orgnr) {
     skriv(`Org.nr: ${faktura.kunde.orgnr}`, margLeft, y)
@@ -218,8 +233,7 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
     skriv('Betalingsinformasjon', margLeft, y)
     y += 14
     doc.setFont('helvetica', 'normal')
-    skriv(`Betal enkelt med kort: ${fakturaBetalingslenke(faktura)}`, margLeft, y)
-    y += 14
+    y = skrivBrutt(`Betal enkelt med kort: ${fakturaBetalingslenke(faktura)}`, margLeft, y)
     if (firma?.bankkonto) {
       skriv(`Eller via bank, kontonummer: ${firma.bankkonto}`, margLeft, y)
       y += 14

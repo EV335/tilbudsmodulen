@@ -1,7 +1,8 @@
 // Regresjonstest for prismodellen. Kjør med: npm run test:pris
 //
 // Hver test her svarer til en bug som faktisk har vært i koden. Endrer du
-// lib/priser.ts, lib/ai.ts eller lib/pdftekst.ts — kjør denne først.
+// lib/priser.ts, lib/ai.ts, lib/pdftekst.ts eller lib/format.ts — kjør denne
+// først.
 //
 // Ingen testrammeverk i prosjektet; dette er et vanlig skript med exit-kode,
 // slik at det kan kjøres i CI senere uten å dra inn Jest eller Vitest.
@@ -9,6 +10,7 @@
 import { beregnTilbud, beregnLinje } from '@/lib/priser'
 import { verifiserPris } from '@/lib/ai'
 import { tilPdfTekst } from '@/lib/pdftekst'
+import { formatKr } from '@/lib/format'
 
 let feil = 0
 function sjekk(navn: string, bestatt: boolean, detalj = '') {
@@ -104,6 +106,18 @@ const negativInput = {
 sjekk('negativ materialsats avvises også ved lagring',
   verifiserPris(negativInput as never, { pris: -325833 } as never) !== null)
 
-const ANTALL = 16
+// 13) «,-» betyr «og null øre», så den hører bare hjemme på runde beløp. Da
+//     ørevisningen ble innført ble suffikset stående på begge grener, og
+//     mva-beløpet på kundefakturaen sto som «kr 12 033,25,-».
+//     Testene sjekker oppfoerselen, ikke eksakte strenger: nb-NO bruker hardt
+//     mellomrom (U+00A0) som tusenskille, og en test som hardkoder vanlig
+//     mellomrom feiler pa riktig kode.
+sjekk('runde belop beholder ,-', formatKr(1500).endsWith(',-'), formatKr(1500))
+sjekk('belop med ore far IKKE ,-', !formatKr(12033.25).endsWith(',-'), formatKr(12033.25))
+sjekk('belop med ore viser to desimaler', /,\d{2}$/.test(formatKr(999.5)), formatKr(999.5))
+sjekk('null kroner er et rundt belop', formatKr(0).endsWith(',-'), formatKr(0))
+sjekk('runde belop har ingen desimaler', !/,\d{2}/.test(formatKr(48133)), formatKr(48133))
+
+const ANTALL = 21
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)
