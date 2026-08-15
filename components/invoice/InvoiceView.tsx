@@ -21,6 +21,7 @@ interface InvoiceViewProps {
 export default function InvoiceView({ faktura: initial, ventPaBekreftelse = false }: InvoiceViewProps) {
   const [faktura, setFaktura] = useState(initial)
   const [resendStatus, setResendStatus] = useState<'idle' | 'sender' | 'sendt' | 'feil'>('idle')
+  const [resendFeil, setResendFeil] = useState<string | null>(null)
   const [lenkeKopiert, setLenkeKopiert] = useState(false)
   const [kansellerStatus, setKansellerStatus] = useState<'idle' | 'kansellerer' | 'feil'>('idle')
 
@@ -33,13 +34,17 @@ export default function InvoiceView({ faktura: initial, ventPaBekreftelse = fals
 
   async function handleGenererEllerResend() {
     setResendStatus('sender')
+    setResendFeil(null)
     try {
       const res = await fetch(`/api/invoices/${faktura.id}/resend`, { method: 'POST' })
       const data = await res.json()
+      // PDF-en lages og lagres selv om e-posten feiler, så lenken oppdateres
+      // uansett utfall — håndverkeren skal kunne laste den ned og sende manuelt.
+      if (data.pdfUrl) setFaktura((f) => ({ ...f, pdf_url: data.pdfUrl }))
       if (!res.ok) throw new Error(data.error || 'Klarte ikke å sende faktura.')
-      setFaktura((f) => ({ ...f, pdf_url: data.pdfUrl }))
       setResendStatus('sendt')
-    } catch {
+    } catch (err) {
+      setResendFeil(err instanceof Error ? err.message : 'Klarte ikke å sende faktura.')
       setResendStatus('feil')
     }
   }
@@ -108,10 +113,18 @@ export default function InvoiceView({ faktura: initial, ventPaBekreftelse = fals
           <Button variant="secondary" size="md" onClick={handleGenererEllerResend} disabled={resendStatus === 'sender'}>
             {resendStatus === 'sender' && 'Sender...'}
             {resendStatus === 'sendt' && 'Sendt på nytt'}
-            {resendStatus === 'feil' && 'Feilet — prøv igjen'}
+            {resendStatus === 'feil' && 'Feilet'}
             {resendStatus === 'idle' && (faktura.pdf_url ? 'Send på nytt' : 'Generer og send')}
           </Button>
         </div>
+
+        {/* Grunnen må stå, ikke bare «feilet»: «kunden mangler e-postadresse»
+            og «e-posten kunne ikke sendes akkurat nå» krever helt ulik handling. */}
+        {resendFeil && (
+          <p className="mt-3 text-sm text-red-700 bg-red-100 border-2 border-red-300 rounded-md px-3 py-2">
+            {resendFeil}
+          </p>
+        )}
       </Card>
 
       {ventPaBekreftelse && (

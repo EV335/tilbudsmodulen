@@ -1248,6 +1248,54 @@ igjen og er dokumentert i koden: ryker `maxDuration` under PDF/e-post, stopper
 idempotency-sjekken Stripes nye forsøk, og fakturaen blir stående betalt uten
 PDF. Manuell utvei finnes: `/api/invoices/[id]/resend`.
 
+### 30. Fjerde bug-runde — den manuelle utveien feilet stille — 2026-08-14
+
+**Autorisasjonsrevisjon først, ingen funn.** Alle `[id]`-ruter — kunder,
+fakturaer, tilbud, resend — og begge de innloggede betalingsrutene henter
+scopet på `session.user.id`, og alle ti lib-funksjonene bak dem har
+`eq('user_id', ...)` i spørringen. Ingen IDOR. De to rutene uten
+sesjonssjekk er NextAuth selv og den token-autentiserte offentlige ruten,
+begge som tiltenkt.
+
+**Funnet: «Send på nytt» meldte suksess selv når e-posten aldri gikk.**
+
+`sendFakturaEpost` svelger alle feil med vilje, og det er riktig i webhooken:
+betalingen har allerede skjedd, og kaster den videre svarer webhooken 500,
+Stripe prøver igjen, og idempotency-sjekken stopper forsøk to. Men **samme
+funksjon brukes av `/api/invoices/[id]/resend`** — som er nettopp den utveien
+punkt 29 peker på når webhooken ikke fikk sendt fakturaen.
+
+Kjeden var: kunden sier «jeg fikk aldri fakturaen» → håndverkeren trykker
+«Send på nytt» → SMTP feiler, eller kunden mangler e-postadresse → funksjonen
+logger og returnerer `void` → ruten svarer `{ ok: true }` → UI-et viser
+**«Sendt på nytt»**. Kunden får fortsatt ingenting, og håndverkeren tror
+saken er ordnet. Sikkerhetsnettet hadde hull.
+
+`sendFakturaEpost` returnerer nå et `EpostResultat`. Webhooken oppfører seg
+nøyaktig som før (svelger, logger), mens resend-ruten svarer 502 ved
+sendefeil og 400 når kunden mangler e-postadresse. Skillet er `kanProeveIgjen`:
+SMTP-trøbbel går som regel over, en manglende e-postadresse gjør ikke det — der
+må kundekortet fikses, og «prøv igjen» er feil råd.
+
+**PDF-en lages og lagres uansett**, så `pdfUrl` følger med i begge svarene, og
+UI-et oppdaterer nedlastingslenken også når e-posten feilet — da kan
+håndverkeren laste ned og sende manuelt. Feilteksten vises nå i grensesnittet;
+før sto det bare «Feilet — prøv igjen», som er direkte feil råd i det ene av
+de to tilfellene.
+
+**Verifisert:** `tsc` rent, 16/16 tester, alle berørte ruter kjørt mot
+dev-server uten serverfeil i loggen — resend gir 401 uten sesjon, webhooken
+400 uten signatur, `/betal/abc` 200, `/historikk/invoices` 307.
+
+**Ikke verifisert:** selve feilstien med en ekte SMTP-feil. Krever innlogging
+og en faktura, og at e-postutsending faktisk feiler.
+
+**Sjekket og funnet rent i samme runde:** `lib/format.ts` (ører vises kun når
+de finnes, samme avrunding som Stripe trekker), `lib/fakturaStatus.ts` (én
+definisjon av «kan betales» delt av UI og alle fire betalingsrutene), og
+`lastOppFakturaPdf` som bruker riktig supabase-js v2-form
+(`data.publicUrl`) — i motsetning til patch-versjonen omtalt i punkt 3.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
