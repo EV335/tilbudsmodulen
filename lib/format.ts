@@ -6,13 +6,18 @@
 // trakk det eksakte beløpet (Math.round(amount * 100) i øre). En faktura på
 // 1500,50 sto altså som "kr 1 500,-" i både PDF og UI, men kunden ble belastet
 // 1500,50. Nå vises ørene når de finnes.
+//
+// «,-» er kortform for «og null øre», så den hører BARE hjemme på runde beløp.
+// Da ørene ble innført ble suffikset stående på begge grener, og resultatet var
+// «kr 12 033,25,-» — et misdannet beløp på en faktura til kunde. Det traff de
+// fleste mva-fakturaer, siden 25 % av en ujevn sum nesten alltid gir øre.
 export function formatKr(beløp: number): string {
   const harOre = Math.round(beløp * 100) % 100 !== 0
-  const desimaler = harOre ? 2 : 0
-  return `kr ${beløp.toLocaleString('nb-NO', {
-    minimumFractionDigits: desimaler,
-    maximumFractionDigits: desimaler,
-  })},-`
+  const tall = beløp.toLocaleString('nb-NO', {
+    minimumFractionDigits: harOre ? 2 : 0,
+    maximumFractionDigits: harOre ? 2 : 0,
+  })
+  return harOre ? `kr ${tall}` : `kr ${tall},-`
 }
 
 export function formatDato(iso: string): string {

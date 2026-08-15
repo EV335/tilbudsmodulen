@@ -1290,11 +1290,56 @@ dev-server uten serverfeil i loggen — resend gir 401 uten sesjon, webhooken
 **Ikke verifisert:** selve feilstien med en ekte SMTP-feil. Krever innlogging
 og en faktura, og at e-postutsending faktisk feiler.
 
-**Sjekket og funnet rent i samme runde:** `lib/format.ts` (ører vises kun når
-de finnes, samme avrunding som Stripe trekker), `lib/fakturaStatus.ts` (én
+**Sjekket og funnet rent i samme runde:** `lib/fakturaStatus.ts` (én
 definisjon av «kan betales» delt av UI og alle fire betalingsrutene), og
 `lastOppFakturaPdf` som bruker riktig supabase-js v2-form
 (`data.publicUrl`) — i motsetning til patch-versjonen omtalt i punkt 3.
+**`lib/format.ts` ble erklært ren her. Det var feil — se punkt 31.**
+
+### 31. Femte bug-runde — begge funnet ved å LESE fakturaen — 2026-08-14
+
+Begge bugene i denne runden satt i den ferdige PDF-en kunden mottar. Ingen av
+dem ga typefeil, byggfeil eller kjøretidsfeil. Samme lærdom som punkt 24: den
+eneste måten å finne dem på var å generere filen og lese hver linje.
+
+**1. `kr 12 033,25,-` — misdannet beløp på kundefakturaen.**
+`,-` er norsk kortform for «og null øre». Da ørevisningen ble innført (så
+PDF-en skulle stemme med det Stripe faktisk trekker) ble suffikset stående på
+**begge** grener. Resultatet: mva-linjen på fakturaen sto som
+«kr 12 033,25,-».
+
+Det traff **de fleste mva-fakturaer** — 25 % av en ujevn sum gir nesten alltid
+øre — i PDF, e-post og UI samtidig, siden alle tre går gjennom `formatKr`.
+Jeg erklærte denne fila ren i forrige runde ved å lese koden. Den ble avslørt
+først da jeg dumpet tekstlinjene fra en generert PDF.
+
+**2. Betalingslenken rant ut av margen.** Målt: 530 pt mot 483 pt tilgjengelig.
+Den lå 47 pt inne i høyremargen og **9 pt fra å bli kuttet av arkkanten**. Et
+lengre domene, og lenken ville blitt avkortet — og en avkortet betalingslenke
+er ubrukelig. jsPDF bryter ikke tekst selv; den tegner videre og sier ikke fra.
+
+Ny `skrivBrutt()` bryter mot tilgjengelig bredde. Brukt på betalingslenken og
+på de frie tekstfeltene (firmaadresse, kundenavn, kundeadresse), som har samme
+svakhet — korte i dagens data, men ingenting hindrer en lang verdi.
+
+**Verifisert ved å generere en ekte faktura-PDF og måle hver linje:** 24 av 24
+innenfor margen, lenken hel og ubrutt på egen linje (487 pt), `kr 12 033,25`
+uten suffiks og `kr 48 133,-` med.
+
+**En feil jeg gjorde underveis, verdt å notere:** første måling brukte
+`localhost:3000`, fordi `.env.local` ikke har `APP_URL`. Den korte lenken ville
+aldri rent ut, så «ingen linje utenfor margen» beviste ingenting. Målte om med
+produksjonsdomenet. **Verifisering som ikke reproduserer produksjonsdata er
+ikke verifisering.**
+
+**Fem nye tester, 21 totalt.** De sjekker oppførsel, ikke eksakte strenger:
+nb-NO bruker hardt mellomrom (U+00A0) som tusenskille, og min første versjon
+feilet på riktig kode fordi den hardkodet vanlig mellomrom.
+
+**Sjekket og funnet rent:** `lib/env.ts`, `lib/pdftekst.ts`, og
+miljøvariablene i Vercel — `APP_URL` **er** satt (ellers ville hver
+betalingslenke pekt til localhost), og alle fem `EMAIL_*` finnes. To av dem så
+først ut til å mangle; det var lazy-rendering i Vercels liste, ikke fravær.
 
 ## Modenhet — ærlig vurdering per 2026-08-13
 
