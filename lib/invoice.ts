@@ -250,10 +250,34 @@ export async function lastOppFakturaPdf(fakturaId: string, pdfBuffer: Buffer): P
 // E-postutsending — gjenbruker samme SMTP-transport (Resend) som magic-link
 // ---------------------------------------------------------------------------
 
-export async function sendFakturaEpost(faktura: Faktura, pdfBuffer: Buffer, firma: FirmaInfo | null): Promise<void> {
+/**
+ * Utfallet av et forsøk på å sende fakturaen.
+ *
+ * Funksjonen kaster aldri — se catch-blokken nedenfor for hvorfor. Men den må
+ * kunne SI FRA at den ikke sendte: webhooken skal svelge feilen (betalingen har
+ * allerede skjedd), mens «Send på nytt» må vise den, for det er der
+ * håndverkeren aktivt ber om å få e-posten av gårde.
+ *
+ * `kanProeveIgjen` skiller infrastruktur fra data: en SMTP-feil går som regel
+ * over, en kunde uten e-postadresse gjør ikke det — der må håndverkeren fikse
+ * kundekortet, og «prøv igjen» er feil råd.
+ */
+export type EpostResultat =
+  | { sendt: true }
+  | { sendt: false; grunn: string; kanProeveIgjen: boolean }
+
+export async function sendFakturaEpost(
+  faktura: Faktura,
+  pdfBuffer: Buffer,
+  firma: FirmaInfo | null
+): Promise<EpostResultat> {
   if (!faktura.kunde?.epost) {
     console.warn(`Faktura ${faktura.invoice_number}: kunden mangler e-post, hopper over utsending.`)
-    return
+    return {
+      sendt: false,
+      grunn: 'Kunden mangler e-postadresse. Legg den inn på kundekortet og prøv igjen.',
+      kanProeveIgjen: false,
+    }
   }
 
   const transporter = nodemailer.createTransport({
@@ -282,6 +306,7 @@ export async function sendFakturaEpost(faktura: Faktura, pdfBuffer: Buffer, firm
         },
       ],
     })
+    return { sendt: true }
   } catch (err) {
     // Denne funksjonen kalles fra Stripe-webhooken, etter at betalingen er
     // registrert og fakturaen markert betalt. En e-postfeil skal derfor ikke
@@ -290,6 +315,11 @@ export async function sendFakturaEpost(faktura: Faktura, pdfBuffer: Buffer, firm
     // frem uansett. Vi logger i stedet, og håndverkeren kan bruke "Send på
     // nytt" på fakturasiden.
     console.error(`Klarte ikke å sende faktura-e-post for ${faktura.invoice_number}:`, err)
+    return {
+      sendt: false,
+      grunn: 'E-posten kunne ikke sendes akkurat nå.',
+      kanProeveIgjen: true,
+    }
   }
 }
 
@@ -297,11 +327,19 @@ export async function sendFakturaEpost(faktura: Faktura, pdfBuffer: Buffer, firm
 // Orkestrering — brukes av webhook og "send på nytt"
 // ---------------------------------------------------------------------------
 
-export async function genererLagreOgSendFaktura(faktura: Faktura): Promise<string> {
+/**
+ * PDF-en er generert og lagret uansett hva som skjer med e-posten — derfor
+ * returneres begge delene. Webhooken bryr seg bare om at det ikke kastes;
+ * «Send på nytt» må vite om e-posten faktisk gikk, og skal fortsatt få
+ * `pdfUrl` selv når den ikke gjorde det.
+ */
+export async function genererLagreOgSendFaktura(
+  faktura: Faktura
+): Promise<{ pdfUrl: string; epost: EpostResultat }> {
   const firma = await hentFirmaForBruker(faktura.user_id)
   const pdfBuffer = await genererFakturaPdf(faktura, firma)
   const pdfUrl = await lastOppFakturaPdf(faktura.id, pdfBuffer)
   await settFakturaPdfUrl(faktura.id, pdfUrl)
-  await sendFakturaEpost(faktura, pdfBuffer, firma)
-  return pdfUrl
+  const epost = await sendFakturaEpost(faktura, pdfBuffer, firma)
+  return { pdfUrl, epost }
 }

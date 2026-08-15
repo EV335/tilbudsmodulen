@@ -25,7 +25,19 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       )
     }
 
-    const pdfUrl = await genererLagreOgSendFaktura(faktura)
+    const { pdfUrl, epost } = await genererLagreOgSendFaktura(faktura)
+
+    // PDF-en er laget og lagret uansett, så pdfUrl blir med i begge svarene.
+    // Men gikk ikke e-posten, skal ruten IKKE svare ok: dette er den manuelle
+    // utveien håndverkeren bruker nettopp fordi kunden ikke fikk fakturaen.
+    // Et falskt «Sendt på nytt» her er verre enn ingen knapp i det hele tatt.
+    if (!epost.sendt) {
+      return NextResponse.json(
+        { error: epost.grunn, pdfUrl },
+        { status: epost.kanProeveIgjen ? 502 : 400 }
+      )
+    }
+
     return NextResponse.json({ ok: true, pdfUrl })
   } catch (err) {
     console.error('Feil i POST /api/invoices/[id]/resend:', err)
