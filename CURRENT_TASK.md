@@ -1385,6 +1385,68 @@ tom feillogg.
 **Ikke verifisert:** selve bekreftelsesdialogen ved fagbytte. `/calc` krever
 innlogging, som ikke finnes i nettleserprofilen. Koden er lest og kompilerer.
 
+### 33. Tilgangsliste — hvem som får lage konto — 2026-08-17
+
+Veikartets punkt 2, og den siste av de tre tingene på blokkerlista som var ren
+kode. Til nå kunne **hvem som helst som kjente adressen** be om en magic link,
+få konto, og sende fakturaer fra `noreply@tilbudsmaskinen.no` — vårt verifiserte
+domene, vårt navn på avsenderen. Adressen er offentlig og skal deles med
+kollegaer, så det var ikke en teoretisk åpning.
+
+**`ALLOWED_EMAILS`** er nå porten. Kommaseparert; en oppføring som starter med
+`@` slipper inn et helt domene:
+
+```
+ALLOWED_EMAILS=deg@firma.no, maler@annetfirma.no, @tilbudsmaskinen.no
+```
+
+Sjekken ligger i `lib/tilgang.ts` og treffer to steder:
+- `signIn`-callbacken i `lib/auth.ts`. next-auth kaller den **både** når lenken
+  bes om og når den klikkes, så én sjekk dekker hele løpet — den avviste får
+  verken e-post eller sesjon.
+- `authorized` i `middleware.ts`. Uten den ville en som fjernes fra lista
+  beholdt tilgangen til token-et gikk ut av seg selv — **30 dager**.
+
+**Den viktigste avgjørelsen: hva skjer ved skrivefeil.** Er variabelen tom,
+står appen åpen som før (ellers ville et deploy uten variabelen låst ute eieren
+selv). Men står det noe i den som ikke gir én eneste gyldig oppføring —
+`ALLOWED_EMAILS=firma.no`, uten krøllalfa — så **stenger** appen for alle og
+logger hvorfor. Tom liste betyr «ikke konfigurert», og uten dette skillet ville
+en typo i hele variabelen åpnet døra på vidt gap, helt stille.
+
+**«Prøv igjen» var feil svar** til den som ikke står på lista — den kan prøve så
+mye den vil. `/logg-inn` skiller nå mellom tre ting: ikke invitert, utløpt lenke,
+og ekte sendefeil. Samtidig fikk `pages.error` en verdi: en avvist eller utløpt
+magic link havnet før på next-auths egen `/api/auth/error` — ustylt, engelsk,
+uten vei tilbake — og kommer nå til vårt eget skjema med meldingen på norsk.
+
+**Verifisert mot dev-server, ikke bare lest:**
+
+| Test | Resultat |
+|---|---|
+| Adresse utenfor lista ber om lenke | `AccessDenied`, ingen e-post sendt |
+| `angriper@ikke-tilbudsmaskinen.no` mot regelen `@tilbudsmaskinen.no` | avvist — domenet må matche helt |
+| Adresse på lista, og `Kollega@Tilbudsmaskinen.NO` via domeneregel | slipper gjennom porten |
+| Gyldig sesjonstoken for adresse **utenfor** lista mot `/calc` | 307 ut til `/logg-inn` |
+| Samme token for adresse **på** lista | 200 |
+
+De to som slapp gjennom ble testet med SMTP pekt mot en død port, så ingen
+e-post gikk ut — serverloggen viser nøyaktig to `ECONNREFUSED`, og ingenting
+annet. `.env.local` ble tatt kopi av og lagt tilbake bit for bit etterpå
+(samme md5).
+
+**Ni nye tester, 36 totalt.** `tsc` rent, `next build` grønt (middleware
+kompilerer for edge, `/logg-inn` er fortsatt statisk).
+
+⚠️ **Koden alene stenger ingenting.** `ALLOWED_EMAILS` må settes i Vercel og
+appen deployes på nytt — Vercel plukker ikke opp nye env-verdier i en kjørende
+deploy. Skjer ikke det, står døra like åpen som før.
+
+**Det som fortsatt står åpent:** et direkte API-kall utenom nettleseren, med et
+allerede utstedt token, går gjennom til token-et utløper — middleware dekker
+sidene, ikke `/api`. Skal noen stenges ute for alvor samme dag, bytt
+`NEXTAUTH_SECRET`; det logger ut alle.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1401,9 +1463,10 @@ innlogging, som ikke finnes i nettleserprofilen. Koden er lest og kompilerer.
    Ikke en bug — en arkitekturbeslutning som krever **Stripe Connect** før noen
    andre enn eier tar imot penger. Regnskapsmessig uholdbart for kollegaene slik
    det står.
-2. **Ingen allowlist.** Hvem som helst med adressen kan lage konto og sende
-   fakturaer fra det verifiserte domenet. Ti linjer kode (`signIn`-callback i
-   `lib/auth.ts` + en env-variabel), men ikke gjort.
+2. ~~**Ingen allowlist.**~~ **Bygget 2026-08-17** (punkt 33) — men den er ikke
+   aktiv før `ALLOWED_EMAILS` er satt i Vercel og appen er deployet på nytt.
+   Til det er gjort kan fortsatt hvem som helst med adressen lage konto og
+   sende fakturaer fra det verifiserte domenet.
 3. **Ingen regnskapseksport** til Fiken eller Tripletex. Uten den blir appen et
    sidespor håndverkeren må dobbeltføre fra.
 
@@ -1423,7 +1486,8 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
    estimatet, foreslå justering av `timerPerEnhet`. Dette er vollgraven: en
    prisbok som lærer. Ingen i det billige segmentet har det. Fundamentet er
    allerede lagt (satser per bruker og operasjon, tilbudet bærer sin egen sats).
-2. **Allowlist** før flere kollegaer inviteres.
+2. ~~**Allowlist** før flere kollegaer inviteres~~ — **bygget 2026-08-17, se
+   punkt 33.** Gjenstår: sett `ALLOWED_EMAILS` i Vercel og deploy.
 3. **Mobiltest** — én runde på telefon.
 4. **Regnskapseksport** til Fiken/Tripletex. Komplementer regnskapsprogrammet,
    ikke konkurrer med det.
@@ -1452,6 +1516,9 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
    innvendig rens. De gir varsel i appen. Spørsmålet til fagpersonen er **ikke**
    «hva bør dette koste», men «hvor lang tid bruker du på én enhet» — det er
    `timerPerEnhet` modellen regner ut fra. Se `docs/priser.md`.
+7. **Sett `ALLOWED_EMAILS` i Vercel** og deploy på nytt — ellers er
+   tilgangslista fra punkt 33 bare kode som ikke gjør noe. Kollegaenes
+   adresser (eller `@firma.no`), kommaseparert.
 
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
@@ -1516,6 +1583,9 @@ se punkt 9. **Arbeidsprinsipp: nye hemmeligheter limes aldri inn i chatten** —
 bruker redigerer `.env.local` selv, verifisering skjer via `curl` som aldri
 skriver ut verdien.
 
+`ALLOWED_EMAILS` styrer hvem som får logge inn (punkt 33). **Er den ikke satt
+i Vercel, er porten åpen.** Endres den, må appen deployes på nytt.
+
 `OPENAI_API_KEY` er **fjernet fra Vercel** 2026-08-13 (se punkt 23). Den ligger
 fortsatt i lokal `.env.local`, og er fortsatt gyldig hos OpenAI. Uten den bruker
 appen malbasert tilbudstekst — tallene er upåvirket.
@@ -1525,8 +1595,9 @@ Dashboard-secreten) for lokal testing. Stripe ga samme secret etter PC-restart,
 men sjekk `%TEMP%\stripe-listen-err.log` hvis webhooks plutselig feiler.
 
 ## Miljø-noter
-- Node/npm er **ikke på PATH** i verktøy-shellet. Full sti:
-  `"/c/Program Files/nodejs/node.exe" node_modules/typescript/bin/tsc --noEmit`
+- ~~Node/npm er **ikke på PATH** i verktøy-shellet~~ — **stemmer ikke lenger**
+  (verifisert 2026-08-17): `npx tsc --noEmit`, `npx next build` og
+  `npm run test:pris` kjører rett fra verktøy-shellet.
 - Stripe CLI: `C:\Users\event\AppData\Local\Microsoft\WinGet\Packages\Stripe.StripeCli_Microsoft.Winget.Source_8wekyb3d8bbwe\stripe.exe`
 - `stripe listen --forward-to localhost:3000/api/webhooks/stripe` må kjøre for at
   webhooks skal nå lokal dev-server.

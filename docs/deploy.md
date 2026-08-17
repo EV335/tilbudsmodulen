@@ -84,6 +84,7 @@ hvilken (`lib/env.ts`), i stedet for `supabaseUrl is required`.
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `pk_test_...` | eneste som er trygg i nettleseren |
 | `STRIPE_WEBHOOK_SECRET` | *fra steg 5* | **ikke** den fra `stripe listen` |
 | `OPENAI_API_KEY` | valgfri | uten den brukes lokalt estimat |
+| `ALLOWED_EMAILS` | `deg@firma.no, @firma.no` | **hvem som får logge inn** — uten den kan hvem som helst lage konto |
 
 ## 4. Sett `APP_URL` og `NEXTAUTH_URL` til den ekte adressen
 
@@ -181,7 +182,28 @@ fungerer teknisk, men kunden får en lenke som ikke ser ut som firmaet ditt.
 
 ## 7. Så inviterer du kollegaene
 
-De trenger bare adressen. De logger inn med sin egen e-post, får sin egen
+**Først: legg dem inn i `ALLOWED_EMAILS`.** Adressen er offentlig, og uten
+lista kan hvem som helst som finner den lage konto og sende fakturaer fra
+`noreply@tilbudsmaskinen.no` — ditt verifiserte domene, ditt navn på
+avsenderen. Kommaseparert, og `@firma.no` slipper inn et helt domene:
+
+```
+ALLOWED_EMAILS=deg@firma.no, maler@annetfirma.no
+```
+
+Endrer du lista må du **deploye på nytt** — Vercel plukker ikke opp nye
+env-verdier i en kjørende deploy. Den som ikke står på lista får verken
+e-post eller konto, og ser meldingen «Denne e-postadressen har ikke tilgang»
+på /logg-inn.
+
+Fjerner du noen fra lista, mister de tilgangen med én gang — både til sidene
+(`middleware.ts` sjekker lista ved hvert sidebesøk) og til API-et
+(`session`-callbacken i `lib/auth.ts` slutter å sette `session.user.id`, som
+hver eneste API-rute vokter på). Sesjonstoken-et deres er teknisk gyldig i
+inntil 30 dager til, men det åpner ingen dører. Skal alle logges ut på én gang,
+bytt `NEXTAUTH_SECRET`.
+
+Så trenger de bare adressen. De logger inn med sin egen e-post, får sin egen
 konto, sitt eget firma, sine egne kunder og sin egen fakturaserie — alt er
 scopet på bruker.
 
