@@ -1341,13 +1341,57 @@ miljøvariablene i Vercel — `APP_URL` **er** satt (ellers ville hver
 betalingslenke pekt til localhost), og alle fem `EMAIL_*` finnes. To av dem så
 først ut til å mangle; det var lazy-rendering i Vercels liste, ikke fravær.
 
+### 32. Sjette runde — før testdagen på tvers av fag — 2026-08-15
+
+Alt tidligere arbeid har brukt **Maler**. Denne runden gikk gjennom alle sju
+fagene, siden testdagen skal dekke dem alle.
+
+**Prisdataene er rene.** Alle 17 operasjoner i alle sju fag ble regnet ut og
+holdt mot sitt eget markedsbånd: **null feil, og hver eneste operasjon med
+markedsdata lander inne i båndet.** De åtte med advarsel er de sju kjente
+anslagene pluss `annet_timer`, som er en ren timesats uten marked.
+
+**Bug 1 — AI-teksten ble alltid forkastet.** Vakten som sjekker at
+AI-teksten gjengir prisen sammenlignet mot `toLocaleString('nb-NO')`, som
+skiller tusener med **hardt mellomrom (U+00A0)**. En AI skriver vanlig
+mellomrom, punktum eller ingenting. Alle fire realistiske skrivemåter feilet.
+
+Vakten var altså usann for enhver pris over 1000 — nesten alle tilbud. Appen
+falt alltid tilbake på malen, og loggen sa «AI-teksten gjengir ikke prisen»,
+som peker mistanken mot modellen i stedet for mot sammenligningen.
+
+Latent i dag siden `OPENAI_API_KEY` er fjernet fra Vercel (punkt 23), men den
+ville slått til i det noen skrur AI-teksten på igjen — og de ville betalt for
+et kall som aldri ble brukt. Sammenligningen går nå på sifre.
+
+**Bug 2 — fagbytte slettet jobben uten varsel.** Operasjonene tilhører hvert
+sitt fag, så linjene må nullstilles ved bytte. Men et feilklikk i
+nedtrekkslista slettet en ferdig utfylt jobb uten et ord. Nå spørres det —
+men **bare** når det faktisk står arbeid der, så tomme skjemaer ikke maser.
+Dette treffer testdagen direkte, der dere med vilje hopper mellom fag.
+
+**Opprydding:** `lib/ai.ts` hadde en privat `formatKr` som formaterer tallet,
+ikke beløpet — samme navn som pengeformatereren i `lib/format.ts`, men en helt
+annen funksjon. Jeg trodde først dette var en dobbel-prefiks-bug og verifiserte
+før jeg meldte fra; teksten var riktig. Den heter nå `formatTall`, slik at
+ingen «rydder opp» ved å bytte inn feil av dem og gir kunden «kr kr 10 167,-,-».
+
+Prisvakten er trukket ut som `tekstNevnerPrisen()` — den lå begravd i en
+try-blokk som bare nås med API-nøkkel, og var dermed umulig å teste.
+
+**Seks nye tester, 27 totalt.** `tsc` rent. Alle ruter kjørt mot dev-server med
+tom feillogg.
+
+**Ikke verifisert:** selve bekreftelsesdialogen ved fagbytte. `/calc` krever
+innlogging, som ikke finnes i nettleserprofilen. Koden er lest og kompilerer.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
 |---|---|---|
 | Konseptet | **7/10** | Ekte problem, men konkurrerer med etablerte aktører. Vollgraven er tynn til etterkalkylen er på plass. |
 | Funksjonalitet | **6/10** | Hele inntektsløkka virker og er verifisert. Dybden for daglig bruk mangler. |
-| Brukervennlighet | **6/10** | Kalkulatoren er blitt god. Aldri åpnet på mobil — der brukerne faktisk er. |
+| Brukervennlighet | **6/10** | Kalkulatoren er blitt god. Mobil er fikset (punkt 17) og brukt av malervennen på ekte telefon — men funnene hans er ikke fanget opp. |
 | Klar for kollegatest | **7/10** | Ja, i Stripe test-modus. |
 | Klar for ekte kunder og penger | **4/10** | Nei. Se blokkerne under. |
 | Samlet | **6/10** | Som produkt: midt på treet. Som det som er bygget på noen dager: sterkt fundament. |
@@ -1363,9 +1407,15 @@ først ut til å mangle; det var lazy-rendering i Vercels liste, ikke fravær.
 3. **Ingen regnskapseksport** til Fiken eller Tripletex. Uten den blir appen et
    sidespor håndverkeren må dobbeltføre fra.
 
-**Aldri testet:** appen er ikke åpnet på mobil én eneste gang. Håndverkere står
-på byggeplass med telefon. Billig å finne ut, kan flytte brukervennlighet
-begge veier.
+**Mobil — rettet 2026-08-15.** Påstanden «aldri åpnet på mobil» var feil på to
+måter. Punkt 17 beskriver ekte mobilarbeid (hamburgermeny, header som trengte
+865 px, beløp som brøt i fakturalisten). Og **malervennen har nå brukt appen på
+sin egen telefon.**
+
+⚠️ **Funnene fra den testen er ikke fanget opp noe sted.** Uten dem vet vi at
+den har vært i bruk på mobil, men ikke hva som gikk bra eller dårlig. Det er
+den enkleste tilgjengelige tilbakemeldingen i hele prosjektet, og den ligger
+utenfor dokumentet. Hent den før neste testrunde planlegges.
 
 ## Veikart — i prioritert rekkefølge
 

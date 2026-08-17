@@ -8,7 +8,7 @@
 // slik at det kan kjøres i CI senere uten å dra inn Jest eller Vitest.
 
 import { beregnTilbud, beregnLinje } from '@/lib/priser'
-import { verifiserPris } from '@/lib/ai'
+import { verifiserPris, tekstNevnerPrisen } from '@/lib/ai'
 import { tilPdfTekst } from '@/lib/pdftekst'
 import { formatKr } from '@/lib/format'
 
@@ -118,6 +118,17 @@ sjekk('belop med ore viser to desimaler', /,\d{2}$/.test(formatKr(999.5)), forma
 sjekk('null kroner er et rundt belop', formatKr(0).endsWith(',-'), formatKr(0))
 sjekk('runde belop har ingen desimaler', !/,\d{2}/.test(formatKr(48133)), formatKr(48133))
 
-const ANTALL = 21
+// 14) Vakten som sjekker at AI-teksten gjengir prisen sammenlignet mot
+//     toLocaleString('nb-NO'), som bruker HARDT mellomrom (U+00A0). En AI
+//     skriver vanlig mellomrom eller punktum, saa vakten var usann for enhver
+//     pris over 1000 — AI-teksten ble alltid forkastet til fordel for malen.
+sjekk('AI-pris med vanlig mellomrom godtas', tekstNevnerPrisen('Samlet fastpris: kr 10 167,-', 10167))
+sjekk('AI-pris med hardt mellomrom godtas', tekstNevnerPrisen('Samlet: 10 167', 10167))
+sjekk('AI-pris med punktum godtas', tekstNevnerPrisen('Totalt kr 10.167,-', 10167))
+sjekk('AI-pris uten skilletegn godtas', tekstNevnerPrisen('Prisen er 10167 kroner.', 10167))
+sjekk('feil pris i AI-teksten avvises', !tekstNevnerPrisen('Samlet fastpris: kr 20 167,-', 10167))
+sjekk('tekst uten pris avvises', !tekstNevnerPrisen('Vi sender tilbud snarest.', 10167))
+
+const ANTALL = 27
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)
