@@ -75,6 +75,20 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
   }
 
   function byttFag(nyttFag: string) {
+    // Operasjonene tilhører hvert sitt fag, så linjene kan ikke følge med over —
+    // de må nullstilles. Men et feilklikk i nedtrekkslista slettet tidligere en
+    // ferdig utfylt jobb uten et eneste ord. Vi spør bare når det faktisk står
+    // arbeid der; er alt tomt, er det ingenting å advare om.
+    const harArbeid = linjer.some((l) => Number(l.antall) > 0)
+    if (
+      harArbeid &&
+      !window.confirm(
+        `Bytter du til ${hentFag(nyttFag).navn}, må du fylle inn linjene på nytt. ` +
+          'Arbeidet du har lagt inn forsvinner. Fortsette?'
+      )
+    ) {
+      return
+    }
     setJobbType(nyttFag)
     setMargin(String(hentFag(nyttFag).marginProsent))
     setLinjer([nyLinje(nyttFag, satser)])

@@ -57,16 +57,34 @@ Regler:
 - Ikke finn på tillegg, rabatter eller forbehold som ikke følger av det du har fått.
 - Skriv kort og profesjonelt. Ingen fyllord, ingen overtalelse.`
 
-function formatKr(n: number): string {
+// Formaterer TALLET, ikke beløpet — «kr» og «,-» settes av malene under.
+// Het tidligere formatKr, som er navnet på pengeformatereren i lib/format.ts.
+// To ulike funksjoner med samme navn inviterer til at noen «rydder opp» ved å
+// bytte inn feil av dem, og da får kunden «kr kr 10 167,-,-».
+function formatTall(n: number): string {
   return n.toLocaleString('nb-NO')
 }
 
 function linjeTekst(l: BeregnetLinje): string {
-  return `- ${l.navn}: ${formatKr(l.antall)} ${l.enhetstekst} — kr ${formatKr(l.prisKr)},-`
+  return `- ${l.navn}: ${formatTall(l.antall)} ${l.enhetstekst} — kr ${formatTall(l.prisKr)},-`
+}
+
+/**
+ * Nevner AI-teksten det beløpet vi faktisk regnet ut?
+ *
+ * Sammenligningen går på SIFRE. Den sjekket tidligere mot
+ * `toLocaleString('nb-NO')`, som skiller tusener med hardt mellomrom (U+00A0).
+ * En AI skriver vanlig mellomrom, punktum eller ingenting — så vakten var usann
+ * for enhver pris over 1000, altså nesten alle tilbud. AI-teksten ble dermed
+ * alltid forkastet til fordel for malen, og loggen sa «gjengir ikke prisen»,
+ * som peker mistanken mot modellen i stedet for mot sammenligningen.
+ */
+export function tekstNevnerPrisen(tekst: string, prisKr: number): boolean {
+  return tekst.replace(/\D/g, '').includes(String(prisKr))
 }
 
 function malbasertTekst(input: TilbudInput, sum: BeregnetSum): Omit<TilbudResult, 'kilde'> {
-  const materialforbruk = `Materialer for ${input.jobbType.toLowerCase()}-arbeidet er beregnet til kr ${formatKr(
+  const materialforbruk = `Materialer for ${input.jobbType.toLowerCase()}-arbeidet er beregnet til kr ${formatTall(
     sum.materialKr
   )},- basert på omfanget i tilbudet. Faktisk forbruk bekreftes ved befaring.`
 
@@ -79,7 +97,7 @@ Jobbtype: ${input.jobbType}${input.beskrivelse ? `\nBeskrivelse: ${input.beskriv
 Omfang:
 ${sum.linjer.map(linjeTekst).join('\n')}
 
-Samlet fastpris: kr ${formatKr(sum.prisKr)},-
+Samlet fastpris: kr ${formatTall(sum.prisKr)},-
 Estimert tidsbruk: ${sum.timer} timer.
 
 Prisen inkluderer arbeid og materialer som beskrevet over. Tillegg utover avtalt
@@ -203,7 +221,7 @@ export async function genererTilbud(input: TilbudInput): Promise<TilbudResult> {
 
     // Siste skanse: nevner teksten et annet totalbeløp enn det vi regnet ut,
     // er den ubrukelig uansett hvor godt den er skrevet. Da tar malen over.
-    if (!tekst.includes(formatKr(sum.prisKr))) {
+    if (!tekstNevnerPrisen(tekst, sum.prisKr)) {
       throw new Error('AI-teksten gjengir ikke prisen som ble regnet ut')
     }
 
