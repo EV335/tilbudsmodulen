@@ -1442,10 +1442,22 @@ kompilerer for edge, `/logg-inn` er fortsatt statisk).
 appen deployes på nytt — Vercel plukker ikke opp nye env-verdier i en kjørende
 deploy. Skjer ikke det, står døra like åpen som før.
 
-**Det som fortsatt står åpent:** et direkte API-kall utenom nettleseren, med et
-allerede utstedt token, går gjennom til token-et utløper — middleware dekker
-sidene, ikke `/api`. Skal noen stenges ute for alvor samme dag, bytt
-`NEXTAUTH_SECRET`; det logger ut alle.
+**API-laget — funnet og tettet i samme runde.** Middleware-matcheren dekker
+`/calc`, `/historikk`, `/innstillinger` og `/kunder`, men ikke `/api`. De 13
+API-rutene vokter i stedet på `session.user.id`. En som ble fjernet fra lista
+var derfor stengt ute av sidene, men kunne fortsatt kalt `/api/invoices` direkte
+med cookien sin — og sendt fakturaer fra avsenderdomenet — i inntil 30 dager, til
+token-et gikk ut av seg selv. Altså nøyaktig det lista finnes for å hindre.
+
+Tettet ett sted: `session`-callbacken i `lib/auth.ts` slutter å sette
+`session.user.id` når adressen ikke lenger har tilgang. Alle 13 rutene arver
+sjekken uten at én eneste av dem er rørt. Skal alle logges ut samtidig uansett
+årsak, er `NEXTAUTH_SECRET` fortsatt bryteren.
+
+⚠️ **Ikke kjørt:** tabellen over testet sider, ikke `/api`. At en avvist adresse
+nå får 401 fra en API-rute er lest og kompilert, ikke observert. Testen krever et
+minted sesjonstoken (`encode()` fra `next-auth/jwt` med `NEXTAUTH_SECRET`) sendt
+som sesjons-cookie mot f.eks. `/api/invoices`.
 
 ## Modenhet — ærlig vurdering per 2026-08-13
 
