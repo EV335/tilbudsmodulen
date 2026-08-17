@@ -35,6 +35,21 @@ men da må fakturaene ryddes opp manuelt etterpå.
 
 Skriptet er trygt å kjøre om igjen og sier fra høylytt hvis noe er galt.
 
+### Migrasjoner som er kommet til senere
+
+```
+migrations/20260813_prissatser.sql
+migrations/20260817_etterkalkyle.sql
+```
+
+`prissatser` gir hver bruker sin egen prisbok. `etterkalkyler` holder hvor lang
+tid jobbene faktisk tok, og er grunnlaget for satsforslagene i «Dine satser».
+
+Begge er trygge å kjøre om igjen. Appen krasjer ikke uten dem — historikk og
+satser vises som før, bare uten avviksmerker og forslag — men **å registrere
+timer feiler** helt til `etterkalkyler` finnes. Da sier appen ifra med
+migrasjonens navn i stedet for en databasefeil.
+
 ## 2. Bruk Stripe i TEST-modus
 
 Behold `sk_test_.../pk_test_...` for kollega-testen. Da bruker dere Stripes

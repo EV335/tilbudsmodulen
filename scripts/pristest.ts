@@ -1,8 +1,8 @@
 // Regresjonstest for prismodellen. Kjør med: npm run test:pris
 //
 // Hver test her svarer til en bug som faktisk har vært i koden. Endrer du
-// lib/priser.ts, lib/ai.ts, lib/pdftekst.ts, lib/format.ts eller
-// lib/tilgang.ts — kjør denne først.
+// lib/priser.ts, lib/ai.ts, lib/pdftekst.ts, lib/format.ts, lib/tilgang.ts
+// eller lib/etterkalkyle.ts — kjør denne først.
 //
 // Ingen testrammeverk i prosjektet; dette er et vanlig skript med exit-kode,
 // slik at det kan kjøres i CI senere uten å dra inn Jest eller Vitest.
@@ -12,6 +12,13 @@ import { verifiserPris, tekstNevnerPrisen } from '@/lib/ai'
 import { tilPdfTekst } from '@/lib/pdftekst'
 import { formatKr } from '@/lib/format'
 import { lesTilgangsliste, harTilgang } from '@/lib/tilgang'
+import {
+  avvikProsent,
+  fordelTimer,
+  samleErfaring,
+  harForslag,
+  type Etterkalkyle,
+} from '@/lib/etterkalkyle'
 
 let feil = 0
 function sjekk(navn: string, bestatt: boolean, detalj = '') {
@@ -152,6 +159,79 @@ sjekk('ALLOWED_EMAILS med bare ugyldige oppføringer stenger i stedet for å åp
   skrivefeil.modus === 'stengt' && !harTilgang('even@firma.no', skrivefeil))
 sjekk('«@no» er ikke en gyldig domeneregel', lesTilgangsliste('@no').modus === 'stengt')
 
-const ANTALL = 36
+// 16) Etterkalkyle. Denne kjeden ender i et FORSLAG om å endre satsen
+//     håndverkeren regner alle framtidige tilbud fra. Et tall som er litt feil
+//     her, blir feil i hver eneste jobb etterpå.
+const reg = (timer: number, linjer: [string, number, number][]): Etterkalkyle => ({
+  tilbudId: 'x',
+  faktiskeTimer: timer,
+  linjer: linjer.map(([operasjonId, antall, estimertTimer]) => ({ operasjonId, antall, estimertTimer })),
+  registrert: '2026-08-17T00:00:00Z',
+})
+
+sjekk('avvik regnes mot estimatet', avvikProsent(12, 10) === 20)
+sjekk('kortere tid gir negativt avvik', avvikProsent(8, 10) === -20)
+sjekk('estimat på null timer gir ingen prosent i stedet for Infinity', avvikProsent(8, 0) === null)
+
+// Fordelingen må gi tilbake nøyaktig de timene som ble ført. Gjør den ikke det,
+// lekker eller oppfinner den arbeidstid inn i satsgrunnlaget.
+const fordelt = fordelTimer(20, [
+  { operasjonId: 'maler_vegg', antall: 100, estimertTimer: 15 },
+  { operasjonId: 'maler_tak', antall: 20, estimertTimer: 5 },
+])
+sjekk('fordelte timer summerer seg til de faktiske',
+  Math.abs(fordelt.reduce((sum, l) => sum + l.faktiskTimer, 0) - 20) < 1e-9,
+  fordelt.map((l) => l.faktiskTimer.toFixed(2)).join(' + '))
+sjekk('fordelingen følger estimatets forhold, ikke antall enheter',
+  Math.abs(fordelt[0].faktiskTimer - 15) < 1e-9 && Math.abs(fordelt[1].faktiskTimer - 5) < 1e-9)
+
+// Gamle tilbud uten linjer skal kunne registreres, men ikke lære opp en sats.
+sjekk('registrering uten linjer gir ingen fordeling', fordelTimer(20, []).length === 0)
+sjekk('null faktiske timer gir ingen fordeling',
+  fordelTimer(0, [{ operasjonId: 'maler_vegg', antall: 10, estimertTimer: 2 }]).length === 0)
+
+// Estimatoren er sum(timer)/sum(antall), ikke snittet av jobbenes satser. En
+// jobb på 200 m² sier mer om produktiviteten enn en på 5 m².
+const erfaringer = samleErfaring([
+  reg(20, [['maler_vegg', 100, 15]]),
+  reg(2, [['maler_vegg', 5, 0.75]]),
+])
+const vegg = erfaringer.find((e) => e.operasjonId === 'maler_vegg')!
+sjekk('erfaring vektes etter størrelse, ikke antall jobber',
+  Math.abs(vegg.observertTimerPerEnhet - 22 / 105) < 0.001,
+  `${vegg.observertTimerPerEnhet} t/enhet av ${vegg.sumFaktiskTimer} t på ${vegg.sumAntall} enheter`)
+sjekk('erfaring teller jobbene og hvor mange som var rene', vegg.jobber === 2 && vegg.reneJobber === 2)
+
+// Terskelen: to jobber er tilfeldigheter, tre er et mønster. Og et avvik under
+// 10 % er mindre enn støyen i hvordan folk fører timer.
+const toJobber = samleErfaring([reg(20, [['maler_vegg', 100, 15]]), reg(20, [['maler_vegg', 100, 15]])])
+sjekk('ingen forslag etter to jobber', !harForslag(toJobber[0]))
+
+const treJobber = samleErfaring([
+  reg(20, [['maler_vegg', 100, 15]]),
+  reg(20, [['maler_vegg', 100, 15]]),
+  reg(20, [['maler_vegg', 100, 15]]),
+])
+sjekk('forslag etter tre jobber med stort avvik', harForslag(treJobber[0]),
+  `${treJobber[0].observertTimerPerEnhet} t/enhet, ${treJobber[0].avvikProsent} % avvik`)
+
+const smaaAvvik = samleErfaring([
+  reg(15.3, [['maler_vegg', 100, 15]]),
+  reg(15.3, [['maler_vegg', 100, 15]]),
+  reg(15.3, [['maler_vegg', 100, 15]]),
+])
+sjekk('ingen forslag når avviket er under ti prosent', !harForslag(smaaAvvik[0]),
+  `${smaaAvvik[0].avvikProsent} % avvik`)
+
+// Brukerens egen sats er utgangspunktet for avviket, ikke standarden i koden.
+const medEgenSats = samleErfaring([reg(20, [['maler_vegg', 100, 15]])], { maler_vegg: { timerPerEnhet: 0.2 } })
+sjekk('avviket måles mot brukerens egen sats når han har en',
+  medEgenSats[0].gjeldendeTimerPerEnhet === 0.2 && medEgenSats[0].avvikProsent === 0)
+
+// En operasjon som er fjernet fra prisboka har ingen sats å foreslå noe for.
+sjekk('ukjent operasjon hopper ut av oversikten i stedet for å krasje',
+  samleErfaring([reg(10, [['finnes_ikke', 10, 5]])]).length === 0)
+
+const ANTALL = 50
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

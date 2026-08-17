@@ -1459,6 +1459,67 @@ nå får 401 fra en API-rute er lest og kompilert, ikke observert. Testen krever
 minted sesjonstoken (`encode()` fra `next-auth/jwt` med `NEXTAUTH_SECRET`) sendt
 som sesjons-cookie mot f.eks. `/api/invoices`.
 
+### 34. Etterkalkyle — prisboka som lærer — 2026-08-17
+
+Veikartets punkt 1, og det eneste i appen som ikke finnes hos de billige
+konkurrentene. Til nå var **alt** i prismodellen anslag: markedstallene i
+`lib/priser.ts`, og brukerens egne satser i `prissatser`. Ingenting visste hva
+jobben faktisk tok. En håndverker kunne ligge 30 % feil på hver eneste jobb i
+et år uten at noe fanget det opp.
+
+**Løkka som nå er lukket:** jobb ferdig → før timene → avviket vises →
+etter tre jobber foreslår «Dine satser» en ny `timerPerEnhet` → ett klikk
+skriver den til prisboka hans.
+
+**Det som ble bygget:**
+- `migrations/20260817_etterkalkyle.sql` — tabellen `etterkalkyler`, én rad per
+  jobb, med samme RLS- og sluttkontroll-mønster som de øvrige migrasjonene.
+- `lib/etterkalkyle.ts` — all regning, uten database og uten React, slik at
+  server, skjema og tester bruker nøyaktig samme tall.
+- `lib/etterkalkyleLager.ts` + `/api/etterkalkyle` — lagring, med eierskapssjekk.
+- `/historikk/etterkalkyle/[tilbudId]` — skjemaet. Viser avviket mens du skriver.
+- `/historikk` — avviksmerke rett i lista («20 t brukt · +33 % mot estimat»).
+- `/innstillinger/priser` — forslaget, med hvor mange jobber det bygger på.
+
+**Tre avgjørelser som er verdt å kjenne til:**
+
+1. **Timene fordeles i forhold til estimatet.** En jobb på «45 m² vegg + 12 m²
+   tak» som tok 14 timer sier ikke hvilken av de to som tok den ekstra tida. Vi
+   antar at bommen er like stor på begge. Det er en antakelse, ikke en måling —
+   derfor teller appen hvor mange av jobbene bak et forslag som hadde **bare én**
+   operasjon, og viser det. En jobb med én operasjon er et rent signal, en med
+   fire er et rykte.
+2. **Terskler før noe foreslås:** minst tre jobber, og minst 10 % avvik. Et
+   forslag som viser seg å være støy én gang, blir ignorert for alltid.
+3. **Linjene lagres som øyeblikksbilde** med registreringen. Uten det ville en
+   senere redigering av tilbudet (45 m² blir til 60) stille endret grunnlaget
+   for et forslag som allerede er gitt, og satsen drevet i en retning ingen ba om.
+
+Estimatoren er `sum(timer) / sum(antall)`, ikke snittet av jobbenes satser — det
+vekter etter størrelse, så en jobb på 200 m² sier mer om produktiviteten enn en
+på 5 m². Det er testet.
+
+**Verifisert mot dev-server:** alle tre rutene svarer 401 uten sesjon; ugyldig
+tilbud-id gir 400 og ikke en Postgres-feil; timer som mangler, er tomme eller
+negative gir 400; en `tilbudId` som ikke tilhører deg gir 404 **før** noe
+skrives — den sjekken er ikke bare tilgangskontroll, for upserten treffer på
+`tilbud_id` alene og kunne ellers flyttet en annens rad over på deg. Siden er
+bak innlogging (307 til `/logg-inn`). `tsc` rent, `next build` grønt.
+
+**Fjorten nye tester, 50 totalt.**
+
+⚠️ **Migrasjonen er ikke kjørt.** Koden tåler det: historikk og satser vises som
+før, bare uten merker og forslag, og `GET /api/etterkalkyle` svarer med tom
+liste i stedet for 500 (verifisert — serverloggen sier «Could not find the table
+public.etterkalkyler»). Men **å registrere timer feiler** til migrasjonen er
+kjørt, og da sier appen ifra med migrasjonens navn i stedet for en databasefeil.
+
+**Ikke sett med ekte data.** Avviksmerket i historikken og forslagsboksen i
+«Dine satser» er bygget, kompilerer og er dekket av tester på regnestykket, men
+ingen av dem er sett i nettleseren med data i — det krever at migrasjonen er
+kjørt og at det finnes en ekte innlogget bruker med et lagret tilbud. Første
+ekte registrering er dermed også den første visuelle testen.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1494,10 +1555,10 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
 
 ## Veikart — i prioritert rekkefølge
 
-1. **Etterkalkyle** — registrer faktisk tidsbruk etter endt jobb, sammenlign med
-   estimatet, foreslå justering av `timerPerEnhet`. Dette er vollgraven: en
-   prisbok som lærer. Ingen i det billige segmentet har det. Fundamentet er
-   allerede lagt (satser per bruker og operasjon, tilbudet bærer sin egen sats).
+1. ~~**Etterkalkyle**~~ — **bygget 2026-08-17, se punkt 34.** Gjenstår: kjør
+   `migrations/20260817_etterkalkyle.sql`, og før timer på en ekte jobb. Neste
+   steg i denne retningen er materialavviket (kolonnen lagres allerede, men
+   brukes ikke til forslag ennå) og en oversikt over treffsikkerhet over tid.
 2. ~~**Allowlist** før flere kollegaer inviteres~~ — **bygget 2026-08-17, se
    punkt 33.** Gjenstår: sett `ALLOWED_EMAILS` i Vercel og deploy.
 3. **Mobiltest** — én runde på telefon.
@@ -1531,6 +1592,8 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
 7. **Sett `ALLOWED_EMAILS` i Vercel** og deploy på nytt — ellers er
    tilgangslista fra punkt 33 bare kode som ikke gjør noe. Kollegaenes
    adresser (eller `@firma.no`), kommaseparert.
+8. **Kjør `migrations/20260817_etterkalkyle.sql`** i Supabase. Uten den kan
+   ingen føre timer på en jobb (punkt 34).
 
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:

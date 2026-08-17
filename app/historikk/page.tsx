@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { LagretTilbud } from '@/lib/historikk'
+import { avvikProsent, type Etterkalkyle } from '@/lib/etterkalkyle'
 import { formatKr, formatDatoTid } from '@/lib/format'
 import { omfangTekst } from '@/lib/priser'
 import Section from '@/components/ui/Section'
@@ -15,6 +16,7 @@ export default function HistorikkPage() {
   const router = useRouter()
   const { status } = useSession()
   const [liste, setListe] = useState<LagretTilbud[] | null>(null)
+  const [etterkalkyler, setEtterkalkyler] = useState<Record<string, Etterkalkyle>>({})
   const [feil, setFeil] = useState<string | null>(null)
 
   useEffect(() => {
@@ -31,6 +33,19 @@ export default function HistorikkPage() {
       setListe(data)
     } catch {
       setFeil('Klarte ikke å hente historikk.')
+      return
+    }
+
+    // Egen henting, og bevisst uten å velte lista hvis den feiler: etterkalkylen
+    // er et tillegg. Er migrasjonen ikke kjørt ennå, skal historikken fortsatt
+    // vises — bare uten avviksmerkene.
+    try {
+      const res = await fetch('/api/etterkalkyle')
+      if (!res.ok) return
+      const rader: Etterkalkyle[] = await res.json()
+      setEtterkalkyler(Object.fromEntries(rader.map((r) => [r.tilbudId, r])))
+    } catch {
+      /* uten merker er lista fortsatt brukbar */
     }
   }
 
@@ -51,6 +66,11 @@ export default function HistorikkPage() {
       const res = await fetch(`/api/tilbud/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Sletting feilet')
       setListe((prev) => prev?.filter((t) => t.id !== id) ?? null)
+      setEtterkalkyler((prev) => {
+        const ny = { ...prev }
+        delete ny[id]
+        return ny
+      })
     } catch {
       setFeil('Klarte ikke å slette tilbudet. Prøv igjen.')
     }
@@ -118,9 +138,16 @@ export default function HistorikkPage() {
                 {omfangTekst(tilbud.input.jobbType, tilbud.input.linjer, tilbud.input.romstorrelseM2)} ·{' '}
                 {formatDatoTid(tilbud.opprettet)}
               </div>
+              <Avviksmerke tilbud={tilbud} etterkalkyle={etterkalkyler[tilbud.id]} />
             </button>
             <div className="flex items-center gap-4 shrink-0">
               <div className="text-xl font-black text-blue">{formatKr(tilbud.resultat.pris)}</div>
+              <Link
+                href={`/historikk/etterkalkyle/${tilbud.id}`}
+                className="text-sm font-medium text-blue hover:underline"
+              >
+                {etterkalkyler[tilbud.id] ? 'Timer' : 'Før timer'}
+              </Link>
               <Link
                 href={`/historikk/invoices/ny?tilbudId=${tilbud.id}`}
                 className="text-sm font-medium text-blue hover:underline"
@@ -135,5 +162,38 @@ export default function HistorikkPage() {
         ))}
       </div>
     </Section>
+  )
+}
+
+/**
+ * Viser hvordan estimatet slo ut for jobber der timene er ført.
+ *
+ * Merket står inne i raden og ikke bak et klikk, fordi det er hele poenget med
+ * etterkalkylen: at bommen er synlig uten at noen leter etter den.
+ */
+function Avviksmerke({
+  tilbud,
+  etterkalkyle,
+}: {
+  tilbud: LagretTilbud
+  etterkalkyle?: Etterkalkyle
+}) {
+  if (!etterkalkyle) return null
+
+  const avvik = avvikProsent(etterkalkyle.faktiskeTimer, tilbud.resultat.tidsbrukTimer)
+  if (avvik === null) return null
+
+  const farge =
+    Math.abs(avvik) < 10
+      ? 'bg-green-100 text-green-900'
+      : avvik > 0
+        ? 'bg-amber-100 text-amber-900'
+        : 'bg-blue-100 text-blue-900'
+
+  return (
+    <div className={`mt-2 inline-block rounded px-2 py-0.5 text-xs font-bold ${farge}`}>
+      {etterkalkyle.faktiskeTimer.toLocaleString('nb-NO')} t brukt
+      {avvik === 0 ? ' · traff estimatet' : ` · ${avvik > 0 ? '+' : ''}${avvik} % mot estimat`}
+    </div>
   )
 }
