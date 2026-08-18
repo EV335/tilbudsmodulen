@@ -1454,10 +1454,24 @@ Tettet ett sted: `session`-callbacken i `lib/auth.ts` slutter å sette
 sjekken uten at én eneste av dem er rørt. Skal alle logges ut samtidig uansett
 årsak, er `NEXTAUTH_SECRET` fortsatt bryteren.
 
-⚠️ **Ikke kjørt:** tabellen over testet sider, ikke `/api`. At en avvist adresse
-nå får 401 fra en API-rute er lest og kompilert, ikke observert. Testen krever et
-minted sesjonstoken (`encode()` fra `next-auth/jwt` med `NEXTAUTH_SECRET`) sendt
-som sesjons-cookie mot f.eks. `/api/invoices`.
+**Kjørt og bekreftet 2026-08-17.** Egen dev-server på port 3001 med
+`ALLOWED_EMAILS=tillatt@lov.no` og egen build-katalog, slik at hverken `.env.local`
+eller serveren på 3000 ble rørt. Sesjons-token minte med `encode()` fra
+`next-auth/jwt` og sendt som cookie:
+
+| Adresse i token | `/api/invoices` | `/calc` |
+|---|---|---|
+| `tillatt@lov.no` | **200** `[]` | **200** |
+| `  TILLATT@LOV.NO  ` (store bokstaver og mellomrom) | **200** | — |
+| `avvist@fremmed.no` | **401** | **307** |
+| `x@lov.no` (samme domene, ikke på lista) | **401** | **307** |
+| `tillatt@lov.no.no` (nesten-treff) | **401** | — |
+| ingen cookie | 401 | 307 |
+
+Avvisningen skjer før databasen: 401-ene kom på 5–40 ms, mens den tillatte gikk
+hele veien inn i `hentFakturaer`. Første forsøk ga 500 fordi test-brukerens id
+ikke var en UUID — en feil i testen, ikke i appen, men den bekreftet i seg selv
+at den tillatte adressen kom forbi vakten og inn i handleren.
 
 ## Modenhet — ærlig vurdering per 2026-08-13
 
