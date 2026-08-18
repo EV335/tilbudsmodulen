@@ -232,6 +232,18 @@ sjekk('avviket måles mot brukerens egen sats når han har en',
 sjekk('ukjent operasjon hopper ut av oversikten i stedet for å krasje',
   samleErfaring([reg(10, [['finnes_ikke', 10, 5]])]).length === 0)
 
-const ANTALL = 50
+// Nevneren i fordelingen må regnes av de samme linjene som faktisk får timer.
+// Ellers tar en linje som faller ut (antall 0) med seg sin andel av nevneren,
+// timene forsvinner, og satsforslaget blir for lavt — altså et forslag om at
+// jobben går raskere enn den gjør.
+const medDodLinje = fordelTimer(20, [
+  { operasjonId: 'maler_vegg', antall: 100, estimertTimer: 15 },
+  { operasjonId: 'maler_tak', antall: 0, estimertTimer: 5 },
+])
+sjekk('en linje uten antall stjeler ikke timer fra de andre',
+  medDodLinje.length === 1 && Math.abs(medDodLinje[0].faktiskTimer - 20) < 1e-9,
+  `${medDodLinje[0]?.faktiskTimer} av 20 timer fordelt`)
+
+const ANTALL = 51
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

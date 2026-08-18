@@ -59,11 +59,18 @@ export function fordelTimer(
   faktiskeTimer: number,
   linjer: EtterkalkyleLinje[]
 ): { operasjonId: string; antall: number; estimertTimer: number; faktiskTimer: number }[] {
-  const estimert = sumEstimerteTimer(linjer)
+  // Nevneren regnes av de SAMME linjene som får timer tildelt. Ble den regnet
+  // av alle linjene, ville en linje som faller ut av filteret (antall 0 fra et
+  // håndredigert eller gammelt øyeblikksbilde) fortsatt tatt sin andel av
+  // nevneren — og de timene ville forsvunnet. Da ville satsforslaget blitt for
+  // lavt, altså foreslått at jobben går raskere enn den gjør.
+  const med = linjer.filter(
+    (l) => Number.isFinite(l.antall) && l.antall > 0 && Number.isFinite(l.estimertTimer) && l.estimertTimer > 0
+  )
+  const estimert = sumEstimerteTimer(med)
   if (!Number.isFinite(faktiskeTimer) || faktiskeTimer <= 0 || estimert <= 0) return []
 
-  return linjer
-    .filter((l) => Number.isFinite(l.antall) && l.antall > 0 && l.estimertTimer > 0)
+  return med
     .map((l) => ({
       operasjonId: l.operasjonId,
       antall: l.antall,

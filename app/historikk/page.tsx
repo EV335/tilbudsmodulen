@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { LagretTilbud } from '@/lib/historikk'
-import { avvikProsent, type Etterkalkyle } from '@/lib/etterkalkyle'
+import { avvikProsent, sumEstimerteTimer, type Etterkalkyle } from '@/lib/etterkalkyle'
 import { formatKr, formatDatoTid } from '@/lib/format'
 import { omfangTekst } from '@/lib/priser'
 import Section from '@/components/ui/Section'
@@ -180,7 +180,13 @@ function Avviksmerke({
 }) {
   if (!etterkalkyle) return null
 
-  const avvik = avvikProsent(etterkalkyle.faktiskeTimer, tilbud.resultat.tidsbrukTimer)
+  // Måles mot øyeblikksbildet som ble lagret med timene, ikke mot tilbudet slik
+  // det ser ut i dag. Redigeres tilbudet etterpå, ville merket ellers vist et
+  // annet avvik enn det satsforslaget faktisk bygger på — to tall om samme jobb,
+  // som ikke stemmer overens. Gamle tilbud uten linjer har tomt øyeblikksbilde
+  // og faller tilbake på estimatet.
+  const estimert = sumEstimerteTimer(etterkalkyle.linjer) || tilbud.resultat.tidsbrukTimer
+  const avvik = avvikProsent(etterkalkyle.faktiskeTimer, estimert)
   if (avvik === null) return null
 
   const farge =

@@ -1538,6 +1538,20 @@ er urørt.
 **Det som gjenstår å se:** selve lagringen av en registrering mot en ekte rad.
 Det krever migrasjonen.
 
+**Gjennomgang av egen kode etterpå — to funn, begge rettet:**
+
+1. **Nevneren i fordelingen** ble regnet av alle linjene, mens bare linjene med
+   `antall > 0` fikk timer tildelt. En linje uten antall ville dermed tatt med
+   seg sin andel av nevneren, og de timene ville forsvunnet. Konsekvensen er
+   ikke en synlig feil, men et satsforslag som er for **lavt** — appen ville
+   foreslått at jobben går raskere enn den gjør, og håndverkeren ville priset
+   seg ned på sin egen erfaring. Test lagt til.
+2. **Avviksmerket i historikken** målte mot tilbudet slik det ser ut **i dag**,
+   mens satsforslaget bygger på øyeblikksbildet fra da timene ble ført.
+   Redigeres tilbudet etterpå, viste de to ulike tall om samme jobb. Merket
+   måler nå mot øyeblikksbildet, med estimatet som fallback for gamle tilbud
+   uten linjer.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
