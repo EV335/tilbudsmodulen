@@ -227,7 +227,8 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
                   <li key={l.operasjonId} className="flex justify-between gap-4">
                     <span>{op?.navn ?? l.operasjonId}</span>
                     <span className="tabular-nums shrink-0">
-                      {l.faktiskTimer.toFixed(1)} t / {l.antall} {op ? ENHETSTEKST[op.enhet] : ''}
+                      {l.faktiskTimer.toLocaleString('nb-NO', { maximumFractionDigits: 1 })} t /{' '}
+                      {l.antall.toLocaleString('nb-NO')} {op ? ENHETSTEKST[op.enhet] : ''}
                     </span>
                   </li>
                 )

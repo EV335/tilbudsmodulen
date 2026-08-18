@@ -1514,11 +1514,29 @@ liste i stedet for 500 (verifisert — serverloggen sier «Could not find the ta
 public.etterkalkyler»). Men **å registrere timer feiler** til migrasjonen er
 kjørt, og da sier appen ifra med migrasjonens navn i stedet for en databasefeil.
 
-**Ikke sett med ekte data.** Avviksmerket i historikken og forslagsboksen i
-«Dine satser» er bygget, kompilerer og er dekket av tester på regnestykket, men
-ingen av dem er sett i nettleseren med data i — det krever at migrasjonen er
-kjørt og at det finnes en ekte innlogget bruker med et lagret tilbud. Første
-ekte registrering er dermed også den første visuelle testen.
+**Grensesnittet er sett med data i.** Siden migrasjonen ikke er kjørt, ble det
+gjort ved å legge midlertidige fixtures i GET-rutene lokalt, se på hver skjerm,
+og deretter reversere dem (`git checkout` — arbeidstreet er rent, ingenting av
+det er committet). Det som faktisk ble observert:
+
+| Skjerm | Sett |
+|---|---|
+| Historikk | «20 t brukt · +33 % mot estimat» på jobben med timer ført, «Før timer» på den uten |
+| Etterkalkyle, én operasjon | forhåndsutfylt, knappen sier «Oppdater», «Slett registreringen» dukker opp, ingen fordelingsboks |
+| Etterkalkyle, to operasjoner | avviket oppdateres mens du skriver, og 14 timer fordeles til 9,7 t vegg + 4,3 t tak — summerer til 14 |
+| Dine satser | «Timene dine sier 0,202 t per enhet — +35 % mot satsen din på 0,15», «3 jobber · alle med bare denne operasjonen · 250 enheter» |
+| «Bruk 0,202» | fyller feltet og sender lagringen |
+
+Regnestykkene stemmer med testene: 50,5 timer på 250 m² = 0,202, og
+6,75/9,75 × 14 = 9,7.
+
+Lagringen fra «Bruk 0,202» ble avvist av databasen med brudd på fremmednøkkelen
+— testbrukeren finnes ikke i `users` — så ingenting ble skrevet til basen.
+Klikk-kjeden er dermed bevist helt fram til skrivingen, og produksjonsdataene
+er urørt.
+
+**Det som gjenstår å se:** selve lagringen av en registrering mot en ekte rad.
+Det krever migrasjonen.
 
 ## Modenhet — ærlig vurdering per 2026-08-13
 
