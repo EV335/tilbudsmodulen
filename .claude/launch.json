@@ -4,8 +4,20 @@
     {
       "name": "tilbudsmaskinen-dev",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
+      "runtimeArgs": [
+        "node_modules/next/dist/bin/next",
+        "dev"
+      ],
       "port": 3000
+    },
+    {
+      "name": "tilgangstest",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": [
+        "/c",
+        "set ALLOWED_EMAILS=tillatt@lov.no&& set NEXT_DIST_DIR=.next-tilgangstest&& \"C:Program Files\nodejs\node.exe\" node_modules/next/dist/bin/next dev -p 3001"
+      ],
+      "port": 3001
     }
   ]
 }

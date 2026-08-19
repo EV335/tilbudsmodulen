@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { getStripe } from '@/lib/stripe'
 import { fakturaBelop, type MvaLinjer } from '@/lib/mva'
+import { erUuid } from '@/lib/uuid'
 
 // Re-eksport for server-side kallere, som allerede importerer fra payments.
 export { fakturaBelop }
@@ -207,15 +208,13 @@ export async function hentFakturaById(id: string): Promise<Faktura | null> {
 // Uscopet oppslag via public_token — brukes av de token-baserte /api/public/*-
 // rutene slik at en sluttkunde uten TilbudsMaskinen-konto kan se og betale
 // egen faktura. Tokenet (uuid, se migrasjonen) ER autentiseringen her.
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
 export async function hentFakturaByPublicToken(token: string): Promise<Faktura | null> {
   // public_token er en uuid-kolonne. Uten denne vakten ble et feilformet token
   // sendt rett til Postgres, som svarte «invalid input syntax for type uuid» —
   // og rutene gjorde det om til 500 med databasefeilen i klartekst, til en
   // uautentisert kaller. En kunde med en avkortet lenke fra e-posten skal se
   // «fant ikke faktura», ikke en serverfeil.
-  if (!UUID.test(token)) return null
+  if (!erUuid(token)) return null
 
   const { data, error } = await supabase
     .from('invoices')

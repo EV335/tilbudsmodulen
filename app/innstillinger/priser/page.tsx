@@ -3,10 +3,19 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { FAG, FAGNAVN, ENHETSTEKST, gjeldendeSats, beregnLinje, type Prissatser } from '@/lib/priser'
+import {
+  harForslag,
+  harMaterialforslag,
+  samleErfaring,
+  MIN_JOBBER_FOR_FORSLAG,
+  type Erfaring,
+  type Etterkalkyle,
+} from '@/lib/etterkalkyle'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import { formatKr } from '@/lib/format'
 
 // Timeprisen brukes bare til å vise hva satsen betyr i kroner per enhet, slik at
 // håndverkeren kan sammenligne med markedsbåndet mens han justerer.
@@ -15,6 +24,7 @@ const VIS_TIMEPRIS = 750
 export default function PriserPage() {
   const { status } = useSession()
   const [satser, setSatser] = useState<Prissatser>({})
+  const [etterkalkyler, setEtterkalkyler] = useState<Etterkalkyle[]>([])
   const [lagrer, setLagrer] = useState<string | null>(null)
   const [feil, setFeil] = useState<string | null>(null)
   const [laster, setLaster] = useState(true)
@@ -26,7 +36,19 @@ export default function PriserPage() {
       .then((data) => setSatser(data ?? {}))
       .catch(() => setFeil('Klarte ikke å hente satsene dine.'))
       .finally(() => setLaster(false))
+
+    // Egen henting: feiler den, skal satsene fortsatt kunne redigeres. Uten
+    // registrerte timer er dette bare en tom liste, og siden ser ut som før.
+    fetch('/api/etterkalkyle')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setEtterkalkyler(data ?? []))
+      .catch(() => setEtterkalkyler([]))
   }, [status])
+
+  // Regnes av de samme funksjonene som serveren og testene bruker.
+  const erfaringer = samleErfaring(etterkalkyler, satser)
+  const erfaringPerOperasjon = new Map(erfaringer.map((e) => [e.operasjonId, e]))
+  const antallForslag = erfaringer.filter((e) => harForslag(e) || harMaterialforslag(e)).length
 
   async function lagre(operasjonId: string, timerPerEnhet: number | null, materialPerEnhet: number | null) {
     setLagrer(operasjonId)
@@ -89,6 +111,19 @@ export default function PriserPage() {
         </div>
       )}
 
+      {antallForslag > 0 && (
+        <div className="mb-8 rounded-md border-2 border-gold bg-gold/10 px-4 py-3">
+          <p className="font-bold text-white">
+            {antallForslag === 1
+              ? 'Én sats ser ut til å bomme mot timene du har ført.'
+              : `${antallForslag} satser ser ut til å bomme mot timene du har ført.`}
+          </p>
+          <p className="text-white/70 text-sm mt-1">
+            Forslagene står ved operasjonene under. De bygger på jobbene dine, ikke på markedstall.
+          </p>
+        </div>
+      )}
+
       {laster ? (
         <p className="text-white/50">Laster satser...</p>
       ) : (
@@ -103,6 +138,7 @@ export default function PriserPage() {
                     fagNavn={fagNavn}
                     op={op}
                     satser={satser}
+                    erfaring={erfaringPerOperasjon.get(op.id)}
                     lagrer={lagrer === op.id}
                     onLagre={lagre}
                   />
@@ -120,12 +156,14 @@ function OperasjonRad({
   fagNavn,
   op,
   satser,
+  erfaring,
   lagrer,
   onLagre,
 }: {
   fagNavn: string
   op: (typeof FAG)[string]['operasjoner'][number]
   satser: Prissatser
+  erfaring?: Erfaring
   lagrer: boolean
   onLagre: (id: string, timer: number | null, material: number | null) => void
 }) {
@@ -203,6 +241,23 @@ function OperasjonRad({
         />
       </div>
 
+      {erfaring && (
+        <Erfaringsboks
+          erfaring={erfaring}
+          onBruk={(nyTimersats) => {
+            // Feltet må settes i tillegg til lagringen: verdien i inputen er
+            // lokal state satt ved montering, og ville ellers stått igjen med
+            // den gamle satsen mens databasen hadde den nye.
+            setTimer(String(nyTimersats))
+            onLagre(op.id, nyTimersats, tallEllerNull(material))
+          }}
+          onBrukMaterial={(nyMaterialsats) => {
+            setMaterial(String(nyMaterialsats))
+            onLagre(op.id, tallEllerNull(timer), nyMaterialsats)
+          }}
+        />
+      )}
+
       {proeve?.advarsel && (
         <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2">
           {proeve.advarsel}
@@ -234,5 +289,103 @@ function OperasjonRad({
         )}
       </div>
     </Card>
+  )
+}
+
+/**
+ * Det etterkalkylen har lært om denne operasjonen.
+ *
+ * Vises også når avviket er for lite til å foreslå noe. Å se «ført på 4 jobber,
+ * treffer innenfor 10 %» er den eneste bekreftelsen håndverkeren får på at
+ * satsen faktisk stemmer — og uten den ville siden bare snakket når noe var galt.
+ */
+function Erfaringsboks({
+  erfaring,
+  onBruk,
+  onBrukMaterial,
+}: {
+  erfaring: Erfaring
+  onBruk: (timer: number) => void
+  onBrukMaterial: (kr: number) => void
+}) {
+  const forslag = harForslag(erfaring)
+  const materialforslag = harMaterialforslag(erfaring)
+  const jobbtekst = `${erfaring.jobber} ${erfaring.jobber === 1 ? 'jobb' : 'jobber'}`
+  const rentekst =
+    erfaring.reneJobber < erfaring.jobber
+      ? `${erfaring.reneJobber} av dem hadde bare denne operasjonen`
+      : 'alle med bare denne operasjonen'
+
+  return (
+    <div
+      className={`mt-4 rounded-md border-2 px-4 py-3 ${
+        forslag || materialforslag ? 'border-gold bg-gold/10' : 'border-black/10 bg-black/[0.03]'
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm">
+          <span className="font-bold">
+            Timene dine sier {erfaring.observertTimerPerEnhet.toLocaleString('nb-NO')} t per enhet
+          </span>
+          <span className="text-black/60">
+            {' '}
+            — {erfaring.avvikProsent > 0 ? '+' : ''}
+            {erfaring.avvikProsent} % mot satsen din på{' '}
+            {erfaring.gjeldendeTimerPerEnhet.toLocaleString('nb-NO')}
+          </span>
+          <div className="text-black/50 mt-0.5">
+            {jobbtekst} · {rentekst} · {erfaring.sumAntall.toLocaleString('nb-NO')} enheter til sammen
+          </div>
+        </div>
+
+        {forslag && (
+          <Button
+            type="button"
+            size="md"
+            variant="gold"
+            onClick={() => onBruk(erfaring.observertTimerPerEnhet)}
+          >
+            Bruk {erfaring.observertTimerPerEnhet.toLocaleString('nb-NO')}
+          </Button>
+        )}
+      </div>
+
+      {erfaring.material && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t border-black/10">
+          <div className="text-sm">
+            <span className="font-bold">
+              Materialene kostet {erfaring.material.observertPerEnhet.toLocaleString('nb-NO')} kr per enhet
+            </span>
+            <span className="text-black/60">
+              {' '}
+              — {erfaring.material.avvikProsent > 0 ? '+' : ''}
+              {erfaring.material.avvikProsent} % mot {erfaring.material.gjeldendePerEnhet.toLocaleString('nb-NO')}
+            </span>
+            <div className="text-black/50 mt-0.5">
+              {erfaring.material.jobber} {erfaring.material.jobber === 1 ? 'jobb' : 'jobber'} med ført
+              materialkostnad · {formatKr(erfaring.material.sumFaktiskKr)} til sammen
+            </div>
+          </div>
+
+          {materialforslag && (
+            <Button
+              type="button"
+              size="md"
+              variant="gold"
+              onClick={() => onBrukMaterial(erfaring.material!.observertPerEnhet)}
+            >
+              Bruk {erfaring.material.observertPerEnhet.toLocaleString('nb-NO')} kr
+            </Button>
+          )}
+        </div>
+      )}
+
+      {!forslag && !materialforslag && erfaring.jobber < MIN_JOBBER_FOR_FORSLAG && (
+        <p className="text-xs text-black/50 mt-2">
+          Ingen justering foreslås før {MIN_JOBBER_FOR_FORSLAG} jobber er ført — under det er det
+          like gjerne en tilfeldig treg dag som et mønster.
+        </p>
+      )}
+    </div>
   )
 }

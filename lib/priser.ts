@@ -273,6 +273,21 @@ export function hentOperasjon(jobbType: string, operasjonId: string): Operasjon 
   return hentFag(jobbType).operasjoner.find((o) => o.id === operasjonId)
 }
 
+const OPERASJON_ETTER_ID = new Map<string, { fagNavn: string; operasjon: Operasjon }>(
+  Object.entries(FAG).flatMap(([fagNavn, fag]) =>
+    fag.operasjoner.map((operasjon) => [operasjon.id, { fagNavn, operasjon }] as const)
+  )
+)
+
+/**
+ * Slår opp en operasjon uten å vite faget. Etterkalkylen samler erfaring på
+ * tvers av jobber, og der er operasjons-id-en det eneste som følger med — faget
+ * ligger på tilbudet, ikke på linja.
+ */
+export function finnOperasjon(operasjonId: string): { fagNavn: string; operasjon: Operasjon } | undefined {
+  return OPERASJON_ETTER_ID.get(operasjonId)
+}
+
 /**
  * Én linje slik brukeren fyller den ut.
  *

@@ -1473,6 +1473,143 @@ hele veien inn i `hentFakturaer`. Første forsøk ga 500 fordi test-brukerens id
 ikke var en UUID — en feil i testen, ikke i appen, men den bekreftet i seg selv
 at den tillatte adressen kom forbi vakten og inn i handleren.
 
+### 34. Etterkalkyle — prisboka som lærer — 2026-08-17
+
+Veikartets punkt 1, og det eneste i appen som ikke finnes hos de billige
+konkurrentene. Til nå var **alt** i prismodellen anslag: markedstallene i
+`lib/priser.ts`, og brukerens egne satser i `prissatser`. Ingenting visste hva
+jobben faktisk tok. En håndverker kunne ligge 30 % feil på hver eneste jobb i
+et år uten at noe fanget det opp.
+
+**Løkka som nå er lukket:** jobb ferdig → før timene → avviket vises →
+etter tre jobber foreslår «Dine satser» en ny `timerPerEnhet` → ett klikk
+skriver den til prisboka hans.
+
+**Det som ble bygget:**
+- `migrations/20260817_etterkalkyle.sql` — tabellen `etterkalkyler`, én rad per
+  jobb, med samme RLS- og sluttkontroll-mønster som de øvrige migrasjonene.
+- `lib/etterkalkyle.ts` — all regning, uten database og uten React, slik at
+  server, skjema og tester bruker nøyaktig samme tall.
+- `lib/etterkalkyleLager.ts` + `/api/etterkalkyle` — lagring, med eierskapssjekk.
+- `/historikk/etterkalkyle/[tilbudId]` — skjemaet. Viser avviket mens du skriver.
+- `/historikk` — avviksmerke rett i lista («20 t brukt · +33 % mot estimat»).
+- `/innstillinger/priser` — forslaget, med hvor mange jobber det bygger på.
+
+**Tre avgjørelser som er verdt å kjenne til:**
+
+1. **Timene fordeles i forhold til estimatet.** En jobb på «45 m² vegg + 12 m²
+   tak» som tok 14 timer sier ikke hvilken av de to som tok den ekstra tida. Vi
+   antar at bommen er like stor på begge. Det er en antakelse, ikke en måling —
+   derfor teller appen hvor mange av jobbene bak et forslag som hadde **bare én**
+   operasjon, og viser det. En jobb med én operasjon er et rent signal, en med
+   fire er et rykte.
+2. **Terskler før noe foreslås:** minst tre jobber, og minst 10 % avvik. Et
+   forslag som viser seg å være støy én gang, blir ignorert for alltid.
+3. **Linjene lagres som øyeblikksbilde** med registreringen. Uten det ville en
+   senere redigering av tilbudet (45 m² blir til 60) stille endret grunnlaget
+   for et forslag som allerede er gitt, og satsen drevet i en retning ingen ba om.
+
+Estimatoren er `sum(timer) / sum(antall)`, ikke snittet av jobbenes satser — det
+vekter etter størrelse, så en jobb på 200 m² sier mer om produktiviteten enn en
+på 5 m². Det er testet.
+
+**Verifisert mot dev-server:** alle tre rutene svarer 401 uten sesjon; ugyldig
+tilbud-id gir 400 og ikke en Postgres-feil; timer som mangler, er tomme eller
+negative gir 400; en `tilbudId` som ikke tilhører deg gir 404 **før** noe
+skrives — den sjekken er ikke bare tilgangskontroll, for upserten treffer på
+`tilbud_id` alene og kunne ellers flyttet en annens rad over på deg. Siden er
+bak innlogging (307 til `/logg-inn`). `tsc` rent, `next build` grønt.
+
+**Fjorten nye tester, 50 totalt.**
+
+⚠️ **Migrasjonen er ikke kjørt.** Koden tåler det: historikk og satser vises som
+før, bare uten merker og forslag, og `GET /api/etterkalkyle` svarer med tom
+liste i stedet for 500 (verifisert — serverloggen sier «Could not find the table
+public.etterkalkyler»). Men **å registrere timer feiler** til migrasjonen er
+kjørt, og da sier appen ifra med migrasjonens navn i stedet for en databasefeil.
+
+**Grensesnittet er sett med data i.** Siden migrasjonen ikke er kjørt, ble det
+gjort ved å legge midlertidige fixtures i GET-rutene lokalt, se på hver skjerm,
+og deretter reversere dem (`git checkout` — arbeidstreet er rent, ingenting av
+det er committet). Det som faktisk ble observert:
+
+| Skjerm | Sett |
+|---|---|
+| Historikk | «20 t brukt · +33 % mot estimat» på jobben med timer ført, «Før timer» på den uten |
+| Etterkalkyle, én operasjon | forhåndsutfylt, knappen sier «Oppdater», «Slett registreringen» dukker opp, ingen fordelingsboks |
+| Etterkalkyle, to operasjoner | avviket oppdateres mens du skriver, og 14 timer fordeles til 9,7 t vegg + 4,3 t tak — summerer til 14 |
+| Dine satser | «Timene dine sier 0,202 t per enhet — +35 % mot satsen din på 0,15», «3 jobber · alle med bare denne operasjonen · 250 enheter» |
+| «Bruk 0,202» | fyller feltet og sender lagringen |
+
+Regnestykkene stemmer med testene: 50,5 timer på 250 m² = 0,202, og
+6,75/9,75 × 14 = 9,7.
+
+Lagringen fra «Bruk 0,202» ble avvist av databasen med brudd på fremmednøkkelen
+— testbrukeren finnes ikke i `users` — så ingenting ble skrevet til basen.
+Klikk-kjeden er dermed bevist helt fram til skrivingen, og produksjonsdataene
+er urørt.
+
+**Det som gjenstår å se:** selve lagringen av en registrering mot en ekte rad.
+Det krever migrasjonen.
+
+**Gjennomgang av egen kode etterpå — to funn, begge rettet:**
+
+1. **Nevneren i fordelingen** ble regnet av alle linjene, mens bare linjene med
+   `antall > 0` fikk timer tildelt. En linje uten antall ville dermed tatt med
+   seg sin andel av nevneren, og de timene ville forsvunnet. Konsekvensen er
+   ikke en synlig feil, men et satsforslag som er for **lavt** — appen ville
+   foreslått at jobben går raskere enn den gjør, og håndverkeren ville priset
+   seg ned på sin egen erfaring. Test lagt til.
+2. **Avviksmerket i historikken** målte mot tilbudet slik det ser ut **i dag**,
+   mens satsforslaget bygger på øyeblikksbildet fra da timene ble ført.
+   Redigeres tilbudet etterpå, viste de to ulike tall om samme jobb. Merket
+   måler nå mot øyeblikksbildet, med estimatet som fallback for gamle tilbud
+   uten linjer.
+
+### 35. Materialavviket — den andre halvparten av kostnaden — 2026-08-18
+
+Etterkalkylen lærte bare av tida. Materialfeltet i skjemaet ble lagret og aldri
+brukt til noe — håndverkeren skrev inn et tall som forsvant. Materialer er
+typisk en tredel til halvparten av kostnaden i et tilbud, så prisboka lærte av
+halve virkeligheten.
+
+**Nå fordeles materialene også**, og de fordeles etter **estimert materialkost**
+— ikke etter timer. Maling og parkett koster ikke i forhold til hvor lenge man
+holder på med dem: fordeles kronene etter tid, får en arbeidsintensiv og
+materialfattig operasjon skylda for materialer den aldri brukte. Fordelingen er
+trukket ut i én felles `fordelEtterVekt`, slik at tid og kroner ikke kan drifte
+fra hverandre i hver sin kopi.
+
+**Timer og materialer telles hver for seg.** Materialfeltet er valgfritt, så en
+operasjon kan ha fem jobber med timer og to med kostnad. Slås de sammen, deles
+kronene på kvadratmeter ingen har ført kostnad for — og materialsatsen blir for
+lav. Terskelen på tre jobber gjelder derfor hver side for seg.
+
+`estimertMaterialKr` er lagt til i øyeblikksbildet. Kolonnen er `jsonb`, så det
+krever ingen ny migrasjon, og det er gjort **før** det finnes en eneste rad i
+produksjon — feltet er valgfritt i typen, så en gammel registrering uten det
+teller fortsatt på timesiden.
+
+**Verifisert i nettleseren** med samme fixture-metode som punkt 34 (reversert
+etterpå, arbeidstreet er rent):
+
+| Sett | |
+|---|---|
+| Dine satser, 3 tidsjobber + 2 materialjobber | «Materialene kostet 61 kr per enhet — +53 % mot 40 · 2 jobber», **uten** knapp |
+| Samme, med en tredje materialjobb | «60 kr per enhet — +50 % · 3 jobber · kr 18 000,- til sammen» og knappen «Bruk 60 kr» |
+| Skjemaet | «Materialene ble 50 % dyrere enn estimert» under materialfeltet |
+
+Tallene stemmer med testene: 18 000 kr på 300 m² = 60 kr, mot standarden 40.
+
+**Åtte nye tester, 61 totalt.** `tsc` rent, `next build` grønt.
+
+**Kollisjon underveis, verdt å merke seg:** `lib/etterkalkyle.ts` ble endret av
+en parallell økt mens jeg jobbet i den. Den endringen fant en ekte feil i min
+`samleErfaring`: linjer med samme operasjon ble talt som hver sin jobb, så én
+jobb med tre veggmaling-linjer passerte terskelen på tre jobber alene. Jeg
+beholdt den rettelsen og bygget materialdelen oppå den — med samme sammenslåing
+per operasjon, av nøyaktig samme grunn.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1508,10 +1645,10 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
 
 ## Veikart — i prioritert rekkefølge
 
-1. **Etterkalkyle** — registrer faktisk tidsbruk etter endt jobb, sammenlign med
-   estimatet, foreslå justering av `timerPerEnhet`. Dette er vollgraven: en
-   prisbok som lærer. Ingen i det billige segmentet har det. Fundamentet er
-   allerede lagt (satser per bruker og operasjon, tilbudet bærer sin egen sats).
+1. ~~**Etterkalkyle**~~ — **bygget 2026-08-17/18, se punkt 34 og 35.** Både tid
+   og materialer lærer nå. Gjenstår: kjør `migrations/20260817_etterkalkyle.sql`,
+   og før timer på en ekte jobb. Neste steg i denne retningen er en oversikt
+   over treffsikkerhet over tid — «traff du bedre i august enn i juni».
 2. ~~**Allowlist** før flere kollegaer inviteres~~ — **bygget 2026-08-17, se
    punkt 33.** Gjenstår: sett `ALLOWED_EMAILS` i Vercel og deploy.
 3. **Mobiltest** — én runde på telefon.
@@ -1545,6 +1682,8 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
 7. **Sett `ALLOWED_EMAILS` i Vercel** og deploy på nytt — ellers er
    tilgangslista fra punkt 33 bare kode som ikke gjør noe. Kollegaenes
    adresser (eller `@firma.no`), kommaseparert.
+8. **Kjør `migrations/20260817_etterkalkyle.sql`** i Supabase. Uten den kan
+   ingen føre timer på en jobb (punkt 34).
 
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
