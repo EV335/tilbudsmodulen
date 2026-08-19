@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { FAG, FAGNAVN, ENHETSTEKST, gjeldendeSats, beregnLinje, type Prissatser } from '@/lib/priser'
 import {
   harForslag,
+  harMaterialforslag,
   samleErfaring,
   MIN_JOBBER_FOR_FORSLAG,
   type Erfaring,
@@ -14,6 +15,7 @@ import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import { formatKr } from '@/lib/format'
 
 // Timeprisen brukes bare til å vise hva satsen betyr i kroner per enhet, slik at
 // håndverkeren kan sammenligne med markedsbåndet mens han justerer.
@@ -46,7 +48,7 @@ export default function PriserPage() {
   // Regnes av de samme funksjonene som serveren og testene bruker.
   const erfaringer = samleErfaring(etterkalkyler, satser)
   const erfaringPerOperasjon = new Map(erfaringer.map((e) => [e.operasjonId, e]))
-  const antallForslag = erfaringer.filter(harForslag).length
+  const antallForslag = erfaringer.filter((e) => harForslag(e) || harMaterialforslag(e)).length
 
   async function lagre(operasjonId: string, timerPerEnhet: number | null, materialPerEnhet: number | null) {
     setLagrer(operasjonId)
@@ -249,6 +251,10 @@ function OperasjonRad({
             setTimer(String(nyTimersats))
             onLagre(op.id, nyTimersats, tallEllerNull(material))
           }}
+          onBrukMaterial={(nyMaterialsats) => {
+            setMaterial(String(nyMaterialsats))
+            onLagre(op.id, tallEllerNull(timer), nyMaterialsats)
+          }}
         />
       )}
 
@@ -293,8 +299,17 @@ function OperasjonRad({
  * treffer innenfor 10 %» er den eneste bekreftelsen håndverkeren får på at
  * satsen faktisk stemmer — og uten den ville siden bare snakket når noe var galt.
  */
-function Erfaringsboks({ erfaring, onBruk }: { erfaring: Erfaring; onBruk: (timer: number) => void }) {
+function Erfaringsboks({
+  erfaring,
+  onBruk,
+  onBrukMaterial,
+}: {
+  erfaring: Erfaring
+  onBruk: (timer: number) => void
+  onBrukMaterial: (kr: number) => void
+}) {
   const forslag = harForslag(erfaring)
+  const materialforslag = harMaterialforslag(erfaring)
   const jobbtekst = `${erfaring.jobber} ${erfaring.jobber === 1 ? 'jobb' : 'jobber'}`
   const rentekst =
     erfaring.reneJobber < erfaring.jobber
@@ -304,7 +319,7 @@ function Erfaringsboks({ erfaring, onBruk }: { erfaring: Erfaring; onBruk: (time
   return (
     <div
       className={`mt-4 rounded-md border-2 px-4 py-3 ${
-        forslag ? 'border-gold bg-gold/10' : 'border-black/10 bg-black/[0.03]'
+        forslag || materialforslag ? 'border-gold bg-gold/10' : 'border-black/10 bg-black/[0.03]'
       }`}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -335,7 +350,37 @@ function Erfaringsboks({ erfaring, onBruk }: { erfaring: Erfaring; onBruk: (time
         )}
       </div>
 
-      {!forslag && erfaring.jobber < MIN_JOBBER_FOR_FORSLAG && (
+      {erfaring.material && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t border-black/10">
+          <div className="text-sm">
+            <span className="font-bold">
+              Materialene kostet {erfaring.material.observertPerEnhet.toLocaleString('nb-NO')} kr per enhet
+            </span>
+            <span className="text-black/60">
+              {' '}
+              — {erfaring.material.avvikProsent > 0 ? '+' : ''}
+              {erfaring.material.avvikProsent} % mot {erfaring.material.gjeldendePerEnhet.toLocaleString('nb-NO')}
+            </span>
+            <div className="text-black/50 mt-0.5">
+              {erfaring.material.jobber} {erfaring.material.jobber === 1 ? 'jobb' : 'jobber'} med ført
+              materialkostnad · {formatKr(erfaring.material.sumFaktiskKr)} til sammen
+            </div>
+          </div>
+
+          {materialforslag && (
+            <Button
+              type="button"
+              size="md"
+              variant="gold"
+              onClick={() => onBrukMaterial(erfaring.material!.observertPerEnhet)}
+            >
+              Bruk {erfaring.material.observertPerEnhet.toLocaleString('nb-NO')} kr
+            </Button>
+          )}
+        </div>
+      )}
+
+      {!forslag && !materialforslag && erfaring.jobber < MIN_JOBBER_FOR_FORSLAG && (
         <p className="text-xs text-black/50 mt-2">
           Ingen justering foreslås før {MIN_JOBBER_FOR_FORSLAG} jobber er ført — under det er det
           like gjerne en tilfeldig treg dag som et mønster.

@@ -61,6 +61,15 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
     .map((l) => ({ operasjonId: l.operasjonId, antall: l.antall, estimertTimer: l.timer }))
   const fordelt = faktiskeTimer && faktiskeTimer > 0 ? fordelTimer(faktiskeTimer, linjer) : []
 
+  // Materialene har sitt eget avvik. Timer og kroner bommer ikke i takt: en
+  // jobb kan gå fort og likevel sluke maling, og det er to ulike satser som må
+  // rettes hver for seg.
+  const faktiskMaterial = material.trim() === '' ? null : Number(material)
+  const materialavvik =
+    faktiskMaterial !== null && Number.isFinite(faktiskMaterial) && faktiskMaterial > 0
+      ? avvikProsent(faktiskMaterial, tilbud?.resultat.materialkostTotal ?? 0)
+      : null
+
   async function lagre(e: React.FormEvent) {
     e.preventDefault()
     setLagrer(true)
@@ -206,6 +215,16 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
           onChange={(e) => setMaterial(e.target.value)}
           hint={`Valgfritt. Estimert: ${formatKr(tilbud.resultat.materialkostTotal)}.`}
         />
+
+        {materialavvik !== null && (
+          <p className="text-sm text-black/60 -mt-3">
+            {materialavvik === 0
+              ? 'Materialene traff estimatet.'
+              : materialavvik > 0
+                ? `Materialene ble ${materialavvik} % dyrere enn estimert.`
+                : `Materialene ble ${Math.abs(materialavvik)} % billigere enn estimert.`}
+          </p>
+        )}
 
         <Textarea
           id="notat"

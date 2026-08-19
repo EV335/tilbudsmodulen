@@ -1552,6 +1552,50 @@ Det krever migrasjonen.
    måler nå mot øyeblikksbildet, med estimatet som fallback for gamle tilbud
    uten linjer.
 
+### 35. Materialavviket — den andre halvparten av kostnaden — 2026-08-18
+
+Etterkalkylen lærte bare av tida. Materialfeltet i skjemaet ble lagret og aldri
+brukt til noe — håndverkeren skrev inn et tall som forsvant. Materialer er
+typisk en tredel til halvparten av kostnaden i et tilbud, så prisboka lærte av
+halve virkeligheten.
+
+**Nå fordeles materialene også**, og de fordeles etter **estimert materialkost**
+— ikke etter timer. Maling og parkett koster ikke i forhold til hvor lenge man
+holder på med dem: fordeles kronene etter tid, får en arbeidsintensiv og
+materialfattig operasjon skylda for materialer den aldri brukte. Fordelingen er
+trukket ut i én felles `fordelEtterVekt`, slik at tid og kroner ikke kan drifte
+fra hverandre i hver sin kopi.
+
+**Timer og materialer telles hver for seg.** Materialfeltet er valgfritt, så en
+operasjon kan ha fem jobber med timer og to med kostnad. Slås de sammen, deles
+kronene på kvadratmeter ingen har ført kostnad for — og materialsatsen blir for
+lav. Terskelen på tre jobber gjelder derfor hver side for seg.
+
+`estimertMaterialKr` er lagt til i øyeblikksbildet. Kolonnen er `jsonb`, så det
+krever ingen ny migrasjon, og det er gjort **før** det finnes en eneste rad i
+produksjon — feltet er valgfritt i typen, så en gammel registrering uten det
+teller fortsatt på timesiden.
+
+**Verifisert i nettleseren** med samme fixture-metode som punkt 34 (reversert
+etterpå, arbeidstreet er rent):
+
+| Sett | |
+|---|---|
+| Dine satser, 3 tidsjobber + 2 materialjobber | «Materialene kostet 61 kr per enhet — +53 % mot 40 · 2 jobber», **uten** knapp |
+| Samme, med en tredje materialjobb | «60 kr per enhet — +50 % · 3 jobber · kr 18 000,- til sammen» og knappen «Bruk 60 kr» |
+| Skjemaet | «Materialene ble 50 % dyrere enn estimert» under materialfeltet |
+
+Tallene stemmer med testene: 18 000 kr på 300 m² = 60 kr, mot standarden 40.
+
+**Åtte nye tester, 61 totalt.** `tsc` rent, `next build` grønt.
+
+**Kollisjon underveis, verdt å merke seg:** `lib/etterkalkyle.ts` ble endret av
+en parallell økt mens jeg jobbet i den. Den endringen fant en ekte feil i min
+`samleErfaring`: linjer med samme operasjon ble talt som hver sin jobb, så én
+jobb med tre veggmaling-linjer passerte terskelen på tre jobber alene. Jeg
+beholdt den rettelsen og bygget materialdelen oppå den — med samme sammenslåing
+per operasjon, av nøyaktig samme grunn.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1587,10 +1631,10 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
 
 ## Veikart — i prioritert rekkefølge
 
-1. ~~**Etterkalkyle**~~ — **bygget 2026-08-17, se punkt 34.** Gjenstår: kjør
-   `migrations/20260817_etterkalkyle.sql`, og før timer på en ekte jobb. Neste
-   steg i denne retningen er materialavviket (kolonnen lagres allerede, men
-   brukes ikke til forslag ennå) og en oversikt over treffsikkerhet over tid.
+1. ~~**Etterkalkyle**~~ — **bygget 2026-08-17/18, se punkt 34 og 35.** Både tid
+   og materialer lærer nå. Gjenstår: kjør `migrations/20260817_etterkalkyle.sql`,
+   og før timer på en ekte jobb. Neste steg i denne retningen er en oversikt
+   over treffsikkerhet over tid — «traff du bedre i august enn i juni».
 2. ~~**Allowlist** før flere kollegaer inviteres~~ — **bygget 2026-08-17, se
    punkt 33.** Gjenstår: sett `ALLOWED_EMAILS` i Vercel og deploy.
 3. **Mobiltest** — én runde på telefon.

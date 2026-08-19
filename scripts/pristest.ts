@@ -15,8 +15,10 @@ import { lesTilgangsliste, harTilgang } from '@/lib/tilgang'
 import {
   avvikProsent,
   fordelTimer,
+  fordelMaterial,
   samleErfaring,
   harForslag,
+  harMaterialforslag,
   type Etterkalkyle,
 } from '@/lib/etterkalkyle'
 
@@ -244,6 +246,71 @@ sjekk('en linje uten antall stjeler ikke timer fra de andre',
   medDodLinje.length === 1 && Math.abs(medDodLinje[0].faktiskTimer - 20) < 1e-9,
   `${medDodLinje[0]?.faktiskTimer} av 20 timer fordelt`)
 
-const ANTALL = 51
+// Et tilbud kan ha flere linjer med SAMME operasjon — «+ Legg til linje» gir
+// samme operasjon som standard, og tre rom med samme veggmaling er helt
+// vanlig utfylling. Da opptellingen gikk per linje, passerte ÉN slik jobb
+// terskelen på tre jobber helt alene, og appen foreslo ny sats på grunnlag
+// av en enkelt jobb — nøyaktig det terskelen finnes for å hindre.
+const treLinjer = samleErfaring([reg(30, [['maler_vegg', 30, 5], ['maler_vegg', 30, 5], ['maler_vegg', 30, 5]])])
+sjekk('tre linjer med samme operasjon er én jobb, ikke tre',
+  treLinjer[0].jobber === 1 && !harForslag(treLinjer[0]),
+  `${treLinjer[0].jobber} jobb(er) talt`)
+
+// Samme jobb og samme timer, bare ført på ulikt antall linjer. Hvordan den
+// skrives inn skal ikke endre hva prisboka lærer av den.
+const somEnLinje = samleErfaring([reg(30, [['maler_vegg', 90, 15]])])
+sjekk('hvordan jobben føres inn endrer ikke hva den lærer bort',
+  treLinjer[0].jobber === somEnLinje[0].jobber &&
+    treLinjer[0].reneJobber === somEnLinje[0].reneJobber &&
+    treLinjer[0].observertTimerPerEnhet === somEnLinje[0].observertTimerPerEnhet)
+
+// 17) Materialavviket. Materialer fordeles etter ESTIMERT MATERIALKOST, ikke
+//     etter timer: maling og parkett koster ikke i forhold til hvor lenge man
+//     holder pa med dem. Fordeles de etter tid, far en arbeidsintensiv og
+//     materialfattig operasjon skylda for materialer den aldri brukte.
+const toLinjer = [
+  { operasjonId: 'maler_vegg', antall: 100, estimertTimer: 15, estimertMaterialKr: 4000 },
+  { operasjonId: 'maler_tak', antall: 20, estimertTimer: 5, estimertMaterialKr: 900 },
+]
+const fordeltKr = fordelMaterial(4900, toLinjer)
+sjekk('materialer fordeles etter materialkost, ikke etter timer',
+  Math.abs(fordeltKr[0].faktiskMaterialKr - 4000) < 1e-9 && Math.abs(fordeltKr[1].faktiskMaterialKr - 900) < 1e-9,
+  fordeltKr.map((l) => Math.round(l.faktiskMaterialKr)).join(' + '))
+sjekk('fordelte kroner summerer seg til det som faktisk ble brukt',
+  Math.abs(fordeltKr.reduce((sum, l) => sum + l.faktiskMaterialKr, 0) - 4900) < 1e-9)
+
+// Et gammelt oyeblikksbilde uten materialgrunnlag kan ikke laere opp en
+// materialsats. Det skal gi tom fordeling, ikke deling paa null.
+sjekk('oyeblikksbilde uten materialgrunnlag gir ingen materialfordeling',
+  fordelMaterial(5000, [{ operasjonId: 'maler_vegg', antall: 100, estimertTimer: 15 }]).length === 0)
+
+const medMaterial = (kr: number | undefined): Etterkalkyle => ({
+  tilbudId: 'x',
+  faktiskeTimer: 15,
+  faktiskMaterialKr: kr,
+  linjer: [{ operasjonId: 'maler_vegg', antall: 100, estimertTimer: 15, estimertMaterialKr: 4000 }],
+  registrert: '2026-08-18T00:00:00Z',
+})
+
+// Feltet er valgfritt, saa timer og materialer telles hver for seg. Blandes de,
+// deles kronene paa kvadratmeter ingen har fort kostnad for.
+const blandetMaterial = samleErfaring([medMaterial(6000), medMaterial(6000), medMaterial(undefined)])
+sjekk('jobber uten fort materialkost teller ikke i materialgrunnlaget',
+  blandetMaterial[0].jobber === 3 && blandetMaterial[0].material?.jobber === 2,
+  `${blandetMaterial[0].jobber} jobber med timer, ${blandetMaterial[0].material?.jobber} med materialer`)
+sjekk('materialsatsen regnes av enhetene som faktisk har kostnad',
+  blandetMaterial[0].material?.observertPerEnhet === 60,
+  `${blandetMaterial[0].material?.observertPerEnhet} kr per enhet mot standard 40`)
+sjekk('to jobber gir ikke materialforslag', !harMaterialforslag(blandetMaterial[0]))
+
+const treMedMaterial = samleErfaring([medMaterial(6000), medMaterial(6000), medMaterial(6000)])
+sjekk('tre jobber med stort materialavvik gir forslag', harMaterialforslag(treMedMaterial[0]),
+  `+${treMedMaterial[0].material?.avvikProsent} %`)
+
+// Uten fort materialkost skal materialdelen vaere helt fravaerende, ikke null.
+const utenMaterial = samleErfaring([medMaterial(undefined)])
+sjekk('ingen fort materialkost gir ingen materialdel', utenMaterial[0].material === undefined)
+
+const ANTALL = 61
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

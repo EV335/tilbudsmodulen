@@ -35,7 +35,12 @@ export function linjerFraResultat(resultat: TilbudResult): EtterkalkyleLinje[] {
   const linjer: BeregnetLinje[] = resultat.linjer ?? []
   return linjer
     .filter((l) => Number.isFinite(l.antall) && l.antall > 0 && Number.isFinite(l.timer) && l.timer > 0)
-    .map((l) => ({ operasjonId: l.operasjonId, antall: l.antall, estimertTimer: l.timer }))
+    .map((l) => ({
+      operasjonId: l.operasjonId,
+      antall: l.antall,
+      estimertTimer: l.timer,
+      estimertMaterialKr: l.materialKr,
+    }))
 }
 
 // Koden blir deployet før migrasjonen kjøres — slik har hver eneste tabell i
