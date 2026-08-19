@@ -311,6 +311,28 @@ sjekk('tre jobber med stort materialavvik gir forslag', harMaterialforslag(treMe
 const utenMaterial = samleErfaring([medMaterial(undefined)])
 sjekk('ingen fort materialkost gir ingen materialdel', utenMaterial[0].material === undefined)
 
-const ANTALL = 61
+// En linje kan ha material uten timer: brukeren setter timesatsen til 0 og
+// tar bare betalt for materialet. Oyeblikksbildet i linjerFraResultat kastet
+// slike linjer, fordi filteret krevde timer > 0 fra den gang bildet bare
+// tjente timefordelingen. Da ble materialet deres fordelt paa de andre
+// linjene — i et reelt tilfelle havnet 5000 av 5200 kr paa feil operasjon.
+const utenTimer = [
+  { operasjonId: 'maler_vegg', antall: 100, estimertTimer: 0, estimertMaterialKr: 5000 },
+  { operasjonId: 'maler_tak', antall: 10, estimertTimer: 1.5, estimertMaterialKr: 200 },
+]
+const matUtenTimer = fordelMaterial(5200, utenTimer)
+sjekk('en linje uten timer far likevel sin del av materialet',
+  matUtenTimer.length === 2 &&
+    Math.abs((matUtenTimer.find((f) => f.operasjonId === 'maler_vegg')?.faktiskMaterialKr ?? 0) - 5000) < 1e-9,
+  `${matUtenTimer.length} linjer fikk material`)
+
+// Samme linje skal fortsatt holdes utenfor TIDsfordelingen — null timer er
+// null timer, og en andel dit ville stjaalet tid fra linja som faktisk
+// brukte den.
+const tidUtenTimer = fordelTimer(2, utenTimer)
+sjekk('men den stjeler ikke timer fra linja som faktisk brukte dem',
+  tidUtenTimer.length === 1 && tidUtenTimer[0].operasjonId === 'maler_tak')
+
+const ANTALL = 63
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

@@ -34,7 +34,20 @@ function radTilEtterkalkyle(rad: EtterkalkyleRad): Etterkalkyle {
 export function linjerFraResultat(resultat: TilbudResult): EtterkalkyleLinje[] {
   const linjer: BeregnetLinje[] = resultat.linjer ?? []
   return linjer
-    .filter((l) => Number.isFinite(l.antall) && l.antall > 0 && Number.isFinite(l.timer) && l.timer > 0)
+    .filter(
+      (l) =>
+        Number.isFinite(l.antall) &&
+        l.antall > 0 &&
+        // Timer ELLER material. Kravet om timer > 0 var riktig da
+        // oeyeblikksbildet bare tjente timefordelingen. Naa mater det ogsaa
+        // materialfordelingen, og en linje uten timer er fullt gyldig der:
+        // brukeren kan ha satt timesatsen til 0 og bare ta betalt for
+        // materialet. Falt linja ut, ble materialet dens fordelt paa de
+        // andre linjene i stedet — og operasjonen som faktisk brukte
+        // materialet laerte ingenting.
+        ((Number.isFinite(l.timer) && l.timer > 0) ||
+          (Number.isFinite(l.materialKr) && l.materialKr > 0))
+    )
     .map((l) => ({
       operasjonId: l.operasjonId,
       antall: l.antall,
