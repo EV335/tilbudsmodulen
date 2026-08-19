@@ -1,8 +1,8 @@
 // Regresjonstest for prismodellen. Kjør med: npm run test:pris
 //
 // Hver test her svarer til en bug som faktisk har vært i koden. Endrer du
-// lib/priser.ts, lib/ai.ts, lib/pdftekst.ts eller lib/format.ts — kjør denne
-// først.
+// lib/priser.ts, lib/ai.ts, lib/pdftekst.ts, lib/format.ts eller
+// lib/tilgang.ts — kjør denne først.
 //
 // Ingen testrammeverk i prosjektet; dette er et vanlig skript med exit-kode,
 // slik at det kan kjøres i CI senere uten å dra inn Jest eller Vitest.
@@ -11,6 +11,7 @@ import { beregnTilbud, beregnLinje } from '@/lib/priser'
 import { verifiserPris, tekstNevnerPrisen } from '@/lib/ai'
 import { tilPdfTekst } from '@/lib/pdftekst'
 import { formatKr } from '@/lib/format'
+import { lesTilgangsliste, harTilgang } from '@/lib/tilgang'
 
 let feil = 0
 function sjekk(navn: string, bestatt: boolean, detalj = '') {
@@ -129,6 +130,28 @@ sjekk('AI-pris uten skilletegn godtas', tekstNevnerPrisen('Prisen er 10167 krone
 sjekk('feil pris i AI-teksten avvises', !tekstNevnerPrisen('Samlet fastpris: kr 20 167,-', 10167))
 sjekk('tekst uten pris avvises', !tekstNevnerPrisen('Vi sender tilbud snarest.', 10167))
 
-const ANTALL = 27
+// 15) Tilgangslista. Den avgjør hvem som kan lage konto og sende fakturaer fra
+//     vårt verifiserte avsenderdomene, så feil her er ikke kosmetiske: for
+//     streng låser ute eieren, for slapp åpner for hvem som helst.
+const apen = lesTilgangsliste(undefined)
+sjekk('uten ALLOWED_EMAILS slipper alle inn', apen.modus === 'apen' && harTilgang('hvemsomhelst@ukjent.no', apen))
+
+const liste = lesTilgangsliste('Even@Firma.no, @tilbudsmaskinen.no')
+sjekk('adresse på lista slipper inn', harTilgang('even@firma.no', liste))
+sjekk('adresse utenfor lista avvises', !harTilgang('fremmed@annet.no', liste))
+sjekk('lista er ufølsom for store bokstaver', harTilgang('  EVEN@FIRMA.NO  ', liste))
+sjekk('@domene slipper inn hele domenet', harTilgang('kollega@tilbudsmaskinen.no', liste))
+sjekk('domeneregel treffer ikke et domene som bare slutter likt',
+  !harTilgang('angriper@ikke-tilbudsmaskinen.no', liste))
+sjekk('tom e-post avvises', !harTilgang('', liste) && !harTilgang(undefined, liste))
+
+// En skrivefeil i hele variabelen ga tom liste, og tom liste betyr «ikke
+// konfigurert» — altså åpen dør, stille. Den skal stenge i stedet.
+const skrivefeil = lesTilgangsliste('firma.no')
+sjekk('ALLOWED_EMAILS med bare ugyldige oppføringer stenger i stedet for å åpne',
+  skrivefeil.modus === 'stengt' && !harTilgang('even@firma.no', skrivefeil))
+sjekk('«@no» er ikke en gyldig domeneregel', lesTilgangsliste('@no').modus === 'stengt')
+
+const ANTALL = 36
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)
