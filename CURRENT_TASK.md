@@ -1522,11 +1522,25 @@ bak innlogging (307 til `/logg-inn`). `tsc` rent, `next build` grønt.
 
 **Fjorten nye tester, 50 totalt.**
 
-⚠️ **Migrasjonen er ikke kjørt.** Koden tåler det: historikk og satser vises som
-før, bare uten merker og forslag, og `GET /api/etterkalkyle` svarer med tom
-liste i stedet for 500 (verifisert — serverloggen sier «Could not find the table
-public.etterkalkyler»). Men **å registrere timer feiler** til migrasjonen er
-kjørt, og da sier appen ifra med migrasjonens navn i stedet for en databasefeil.
+✅ **Migrasjonen er kjørt — 2026-08-20.** Kjørt i Supabase SQL Editor mot
+prosjektet `zculzyarnamvrmmhibhn` (det `SUPABASE_URL` faktisk peker på — org-en
+har to prosjekter, så ref-en ble slått opp først). Svaret var «Success. No rows
+returned». Det ER verifiseringen: sluttkontrollen i skriptet kaster exception
+hvis tabellen, kolonnene, unik-constrainten på `tilbud_id` eller RLS mangler.
+
+Bekreftet fra app-siden etterpå: `GET /api/etterkalkyle` gir 200 med tom liste
+og **ingen feillinje i loggen**. Samme kall loggførte «Could not find the table
+public.etterkalkyler» før migrasjonen, så forskjellen er selve beviset.
+
+**To ting gikk galt underveis og er verdt å huske til neste migrasjon:**
+1. Utklippstavla inneholdt **mva-migrasjonen**, ikke etterkalkylen — noe hadde
+   overskrevet den mellom kopiering og liming. Oppdaget fordi innholdet ble lest
+   i editoren før Run. Å kjøre den ville vært ufarlig (idempotent), men det var
+   ikke det som var bedt om.
+2. `Get-Content -Raw` i Windows PowerShell leser UTF-8-filer som ANSI. Første
+   liming ga `pÅ¥` i stedet for `på` inne i `raise exception`-tekstene og i
+   `comment on table`. Rettet med `-Encoding UTF8` og verifisert i editoren før
+   Run. **Bruk alltid `-Encoding UTF8` på disse filene.**
 
 **Grensesnittet er sett med data i.** Siden migrasjonen ikke er kjørt, ble det
 gjort ved å legge midlertidige fixtures i GET-rutene lokalt, se på hver skjerm,
@@ -1610,6 +1624,23 @@ jobb med tre veggmaling-linjer passerte terskelen på tre jobber alene. Jeg
 beholdt den rettelsen og bygget materialdelen oppå den — med samme sammenslåing
 per operasjon, av nøyaktig samme grunn.
 
+## Status før lansering — 2026-08-20
+
+Verifisert denne økten, ikke antatt:
+
+| | Status | Grunnlag |
+|---|---|---|
+| Koden i produksjon | ✅ ute | `/historikk/etterkalkyle/<id>` gir 307 til innlogging på `tilbudsmodulen-ev335s-projects.vercel.app`, `/api/etterkalkyle` gir 401, en ukjent rute gir 404 |
+| Etterkalkyle-tabellen | ✅ finnes | migrasjonen kjørt, og appen leser fra den uten feillinje |
+| Tilgangslista i kode | ✅ merget | punkt 33 |
+| `ALLOWED_EMAILS` i Vercel | ❓ **ikke bekreftet** | Vercel krevde 2FA-oppsett før innstillingene kunne leses. Den avgjørelsen er eierens, så sjekken ble ikke fullført |
+| Timer ført på en ekte jobb | ❌ ikke gjort | krever innlogget bruker med et lagret tilbud |
+| Materialavvik | ✅ i kode | punkt 35, sett med fixtures |
+
+**Rekkefølgen som gjenstår:** bekreft `ALLOWED_EMAILS` (og deploy på nytt hvis
+den legges inn nå), før timer på én ekte jobb, og se at avviksmerket dukker opp
+i historikken. Da er hele løkka kjørt på ekte data for første gang.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1682,8 +1713,8 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
 7. **Sett `ALLOWED_EMAILS` i Vercel** og deploy på nytt — ellers er
    tilgangslista fra punkt 33 bare kode som ikke gjør noe. Kollegaenes
    adresser (eller `@firma.no`), kommaseparert.
-8. **Kjør `migrations/20260817_etterkalkyle.sql`** i Supabase. Uten den kan
-   ingen føre timer på en jobb (punkt 34).
+8. ~~**Kjør `migrations/20260817_etterkalkyle.sql`**~~ — **gjort 2026-08-20**,
+   se punkt 34. Tabellen finnes, og appen når den.
 
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
