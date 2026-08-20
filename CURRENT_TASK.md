@@ -1641,6 +1641,59 @@ Verifisert denne økten, ikke antatt:
 den legges inn nå), før timer på én ekte jobb, og se at avviksmerket dukker opp
 i historikken. Da er hele løkka kjørt på ekte data for første gang.
 
+### 36. Tilgangslista er aktiv i produksjon — og domenet er ikke koblet — 2026-08-20
+
+`ALLOWED_EMAILS` er satt i Vercel og appen deployet på nytt. Fra punkt 33 var
+dette det som gjensto: koden alene stengte ingenting.
+
+**Verifisert utenfra, mot den kjørende appen:**
+
+| Test | Resultat |
+|---|---|
+| Appen svarer | 200 |
+| `/calc` uten innlogging | 307 → `/logg-inn` |
+| `ikke-invitert@example.com` ber om innloggingslenke | **`AccessDenied`** |
+| Gikk det ut e-post til den avviste? | **Nei** |
+| Hvor den avviste havner | `/logg-inn?error=AccessDenied` — appens eget norske skjema |
+
+Avvisningstesten brukte `@example.com` med vilje: domenet er IANA-reservert og
+har ingen MX, så selv om lista hadde vært feil satt, kunne ingen e-post nådd en
+ekte innboks. Kjeden `/api/auth/error` → 302 → `/logg-inn` ble fulgt hele veien,
+så `pages.error` fra punkt 33 virker også i produksjon.
+
+**Dermed er blokker 2 på modenhetslista borte.** Hvem som helst kan ikke lenger
+lage konto og fakturere fra det verifiserte avsenderdomenet.
+
+## ⚠️ Funn: `tilbudsmaskinen.no` står fortsatt parkert
+
+Oppdaget mens jeg lette etter riktig adresse å teste mot. Domenet er **ikke
+koblet til Vercel**:
+
+- DNS peker på `185.134.245.113` — Vercels IP er `76.76.21.21`
+- HTTPS på 443: connection refused, både med og uten `www`
+- HTTP på 80 svarer med nginx og siden «tilbudsmaskinen.no is parked»
+
+Appen lever kun på `tilbudsmodulen-ev335s-projects.vercel.app`.
+
+**Hvorfor det er alvorlig:** betalingslenkene i faktura-PDF og faktura-e-post
+bygges av `appUrl()` fra `APP_URL`. Peker den på `https://tilbudsmaskinen.no`,
+får hver eneste kunde en lenke som ikke svarer — og **ingenting feiler synlig
+noe sted**. Det er nøyaktig fellen `.env.local.example` advarer mot, bare med et
+parkert domene i stedet for `localhost:3000`.
+
+E-postutsending er ikke rammet: `noreply@tilbudsmaskinen.no` hviler på MX/TXT
+hos registraren, uavhengig av A-pekeren.
+
+To veier ut — koble domenet i Vercel → Domains og legge om A-pekeren hos
+registraren, eller sette `APP_URL` til vercel.app-adressen inntil videre. Det
+siste tar to minutter og gjør lenkene levende med én gang.
+
+Migrasjonen `20260817_etterkalkyle.sql` var allerede kjørt samme dag, så
+etterkalkylen er aktiv i produksjon. Jeg bekreftet den ikke utenfra —
+`/api/etterkalkyle` krever innlogging, og å minte en produksjonssesjon gikk
+lenger enn det var bedt om.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1657,10 +1710,11 @@ i historikken. Da er hele løkka kjørt på ekte data for første gang.
    Ikke en bug — en arkitekturbeslutning som krever **Stripe Connect** før noen
    andre enn eier tar imot penger. Regnskapsmessig uholdbart for kollegaene slik
    det står.
-2. ~~**Ingen allowlist.**~~ **Bygget 2026-08-17** (punkt 33) — men den er ikke
-   aktiv før `ALLOWED_EMAILS` er satt i Vercel og appen er deployet på nytt.
-   Til det er gjort kan fortsatt hvem som helst med adressen lage konto og
-   sende fakturaer fra det verifiserte domenet.
+2. ~~**Ingen allowlist.**~~ **Løst 2026-08-20** (punkt 33 og 36).
+   `ALLOWED_EMAILS` er satt i Vercel, appen er deployet, og avvisningen er
+   verifisert mot den kjørende appen: en adresse utenfor lista får
+   `AccessDenied`, det går ikke ut e-post, og hun havner på appens eget
+   norske skjema.
 3. **Ingen regnskapseksport** til Fiken eller Tripletex. Uten den blir appen et
    sidespor håndverkeren må dobbeltføre fra.
 
@@ -1710,11 +1764,16 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
    innvendig rens. De gir varsel i appen. Spørsmålet til fagpersonen er **ikke**
    «hva bør dette koste», men «hvor lang tid bruker du på én enhet» — det er
    `timerPerEnhet` modellen regner ut fra. Se `docs/priser.md`.
-7. **Sett `ALLOWED_EMAILS` i Vercel** og deploy på nytt — ellers er
-   tilgangslista fra punkt 33 bare kode som ikke gjør noe. Kollegaenes
-   adresser (eller `@firma.no`), kommaseparert.
+7. ~~**Sett `ALLOWED_EMAILS` i Vercel**~~ — **gjort 2026-08-20**, se punkt 36.
+   Verifisert utenfra mot den kjørende appen.
 8. ~~**Kjør `migrations/20260817_etterkalkyle.sql`**~~ — **gjort 2026-08-20**,
    se punkt 34. Tabellen finnes, og appen når den.
+9. ⚠️ **`tilbudsmaskinen.no` er ikke koblet til Vercel** — domenet står på
+   registrarens parkeringsside, og appen lever kun på vercel.app-adressen.
+   Peker `APP_URL` på det parkerte domenet, får hver kunde en død
+   betalingslenke i faktura-PDF og e-post, uten at noe feiler synlig. Se
+   punkt 36. Enten koble domenet i Vercel → Domains, eller sette `APP_URL`
+   til vercel.app-adressen inntil videre.
 
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
