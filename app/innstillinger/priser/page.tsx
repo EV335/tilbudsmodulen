@@ -14,8 +14,10 @@ import {
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
+import TallInput from '@/components/ui/TallInput'
 import Button from '@/components/ui/Button'
 import { formatKr } from '@/lib/format'
+import { tilTall } from '@/lib/tall'
 
 // Timeprisen brukes bare til å vise hva satsen betyr i kroner per enhet, slik at
 // håndverkeren kan sammenligne med markedsbåndet mens han justerer.
@@ -174,7 +176,7 @@ function OperasjonRad({
   // Et tomt felt betyr «bruk standarden», ikke null timer. Uten dette ga
   // Number('') = 0: tømte du feltet og lagret, fikk operasjonen satsen 0 —
   // altså null arbeid i alle framtidige tilbud, uten at noe så galt ut.
-  const tallEllerNull = (s: string): number | null => (s.trim() === '' ? null : Number(s))
+  const tallEllerNull = tilTall
 
   // Viser hva satsen faktisk gir per enhet, med samme funksjon som kalkulatoren.
   // Samme tolkning som ved lagring, slik at forhåndsvisningen viser det som
@@ -220,22 +222,15 @@ function OperasjonRad({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-        <Input
+        <TallInput
           id={`timer-${op.id}`}
           label="Timer per enhet"
-          type="number"
-          min="0"
-          max="500"
-          step="any"
           value={timer}
           onChange={(e) => setTimer(e.target.value)}
         />
-        <Input
+        <TallInput
           id={`material-${op.id}`}
           label="Materialer per enhet (kr)"
-          type="number"
-          min="0"
-          step="any"
           value={material}
           onChange={(e) => setMaterial(e.target.value)}
         />

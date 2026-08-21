@@ -6,10 +6,12 @@ import { useSession } from 'next-auth/react'
 import type { Kunde } from '@/lib/payments'
 import type { LagretTilbud } from '@/lib/historikk'
 import { formatKr } from '@/lib/format'
+import { tilTall } from '@/lib/tall'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
+import TallInput from '@/components/ui/TallInput'
 import Button from '@/components/ui/Button'
 import Checkbox from '@/components/ui/Checkbox'
 
@@ -92,7 +94,7 @@ function NyFakturaInnhold() {
         body: JSON.stringify({
           customerId,
           tilbudId: tilbudId || undefined,
-          amount: tilbudId ? undefined : Number(manueltBelop),
+          amount: tilbudId ? undefined : (tilTall(manueltBelop) ?? 0),
           dueDate: dueDate || undefined,
           mvaInkludert,
         }),
@@ -161,11 +163,9 @@ function NyFakturaInnhold() {
         />
 
         {!tilbudId && (
-          <Input
+          <TallInput
             id="belop"
             label="Beløp (kr)"
-            type="number"
-            min="1"
             required
             value={manueltBelop}
             onChange={(e) => setManueltBelop(e.target.value)}

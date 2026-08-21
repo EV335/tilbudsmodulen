@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { hentTilbud } from '@/lib/historikk'
 import { erUuid } from '@/lib/uuid'
+import { lesTall } from '@/lib/tall'
 import {
   hentEtterkalkyler,
   lagreEtterkalkyle,
@@ -30,16 +31,6 @@ export async function GET() {
 const MAKS_TIMER = 100_000
 const MAKS_MATERIAL = 10_000_000
 const MAKS_NOTAT = 2000
-
-function lesTall(verdi: unknown, maks: number): number | null | 'ugyldig' {
-  if (verdi === null || verdi === undefined) return null
-  if (typeof verdi === 'string' && verdi.trim() === '') return null
-  // Number([]) og Number(true) gir 0 og 1. Bare tall og tallstrenger godtas.
-  if (typeof verdi !== 'number' && typeof verdi !== 'string') return 'ugyldig'
-  const tall = Number(verdi)
-  if (!Number.isFinite(tall) || tall < 0 || tall > maks) return 'ugyldig'
-  return tall
-}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)

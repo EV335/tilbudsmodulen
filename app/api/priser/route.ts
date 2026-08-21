@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { lesTall } from '@/lib/tall'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { hentPrissatser, lagrePrissats, erGyldigOperasjon } from '@/lib/prissatser'
@@ -21,19 +22,6 @@ export async function GET() {
 // en million i materialer per enhet, er en tastefeil — ikke en jobb.
 const MAKS_TIMER = 500
 const MAKS_MATERIAL = 1_000_000
-
-function lesTall(verdi: unknown, maks: number): number | null | 'ugyldig' {
-  if (verdi === null || verdi === undefined) return null
-  // Tomt felt — og blanke tegn — betyr «bruk standarden». Uten trim ville
-  // Number(' ') gitt 0, altså en lagret sats på null timer i stedet for
-  // ingen overstyring i det hele tatt.
-  if (typeof verdi === 'string' && verdi.trim() === '') return null
-  // Number([]) og Number(true) gir 0 og 1. Bare tall og tallstrenger godtas.
-  if (typeof verdi !== 'number' && typeof verdi !== 'string') return 'ugyldig'
-  const tall = Number(verdi)
-  if (!Number.isFinite(tall) || tall < 0 || tall > maks) return 'ugyldig'
-  return tall
-}
 
 export async function PUT(req: NextRequest) {
   const session = await getServerSession(authOptions)

@@ -8,9 +8,11 @@ import { LagretTilbud } from '@/lib/historikk'
 import { avvikProsent, fordelTimer, linjerFraResultat, type EtterkalkyleLinje } from '@/lib/etterkalkyle'
 import { ENHETSTEKST, finnOperasjon, omfangTekst } from '@/lib/priser'
 import { formatKr, formatDato } from '@/lib/format'
+import { tilTall } from '@/lib/tall'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
+import TallInput from '@/components/ui/TallInput'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 
@@ -48,7 +50,7 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
   }, [status, params.tilbudId])
 
   const estimerteTimer = tilbud?.resultat.tidsbrukTimer ?? 0
-  const faktiskeTimer = timer.trim() === '' ? null : Number(timer)
+  const faktiskeTimer = tilTall(timer)
   const avvik =
     faktiskeTimer !== null && Number.isFinite(faktiskeTimer) && faktiskeTimer > 0
       ? avvikProsent(faktiskeTimer, estimerteTimer)
@@ -64,7 +66,7 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
   // Materialene har sitt eget avvik. Timer og kroner bommer ikke i takt: en
   // jobb kan gå fort og likevel sluke maling, og det er to ulike satser som må
   // rettes hver for seg.
-  const faktiskMaterial = material.trim() === '' ? null : Number(material)
+  const faktiskMaterial = tilTall(material)
   const materialavvik =
     faktiskMaterial !== null && Number.isFinite(faktiskMaterial) && faktiskMaterial > 0
       ? avvikProsent(faktiskMaterial, tilbud?.resultat.materialkostTotal ?? 0)
@@ -80,8 +82,8 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tilbudId: params.tilbudId,
-          faktiskeTimer: timer,
-          faktiskMaterialKr: material,
+          faktiskeTimer,
+          faktiskMaterialKr: faktiskMaterial,
           notat,
         }),
       })
@@ -174,12 +176,9 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
           </div>
         </div>
 
-        <Input
+        <TallInput
           id="timer"
           label="Timer jobben faktisk tok"
-          type="number"
-          min="0"
-          step="any"
           required
           autoFocus
           value={timer}
@@ -205,12 +204,9 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
           </div>
         )}
 
-        <Input
+        <TallInput
           id="material"
           label="Materialer faktisk kostet (kr)"
-          type="number"
-          min="0"
-          step="any"
           value={material}
           onChange={(e) => setMaterial(e.target.value)}
           hint={`Valgfritt. Estimert: ${formatKr(tilbud.resultat.materialkostTotal)}.`}
@@ -269,7 +265,7 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
         )}
 
         <div className="flex flex-wrap items-center gap-4 pt-2">
-          <Button type="submit" size="md" disabled={lagrer || timer.trim() === ''}>
+          <Button type="submit" size="md" disabled={lagrer || faktiskeTimer === null || faktiskeTimer <= 0}>
             {lagrer ? 'Lagrer...' : registrert ? 'Oppdater' : 'Lagre'}
           </Button>
           {registrert && (

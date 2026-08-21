@@ -13,9 +13,11 @@ import {
   ENHETSTEKST,
   type Prissatser,
 } from '@/lib/priser'
+import { tilTall } from '@/lib/tall'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
+import TallInput from '@/components/ui/TallInput'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 
@@ -79,7 +81,7 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
     // de må nullstilles. Men et feilklikk i nedtrekkslista slettet tidligere en
     // ferdig utfylt jobb uten et eneste ord. Vi spør bare når det faktisk står
     // arbeid der; er alt tomt, er det ingenting å advare om.
-    const harArbeid = linjer.some((l) => Number(l.antall) > 0)
+    const harArbeid = linjer.some((l) => (tilTall(l.antall) ?? 0) > 0)
     if (
       harArbeid &&
       !window.confirm(
@@ -112,17 +114,17 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
 
   // Samme funksjon som serveren bruker, så forhåndsvisningen kan ikke bomme.
   const forhandsvisning = useMemo(() => {
-    const tp = Number(timepris)
+    const tp = (tilTall(timepris) ?? 0)
     if (!tp || tp <= 0) return null
-    const m = Number(margin)
+    const m = (tilTall(margin) ?? -1)
     if (!Number.isFinite(m) || m < 0 || m >= 100) return null
     const gyldige = linjer
-      .filter((l) => Number(l.antall) > 0)
+      .filter((l) => (tilTall(l.antall) ?? 0) > 0)
       .map((l) => ({
         operasjonId: l.operasjonId,
-        antall: Number(l.antall),
+        antall: (tilTall(l.antall) ?? 0),
         timerPerEnhet: satsFor(l.operasjonId),
-        materialPerEnhet: l.materialPerEnhet === '' ? undefined : Number(l.materialPerEnhet),
+        materialPerEnhet: tilTall(l.materialPerEnhet) ?? undefined,
       }))
     if (gyldige.length === 0) return null
     return beregnTilbud(jobbType, gyldige, tp, m)
@@ -132,15 +134,15 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
     e.preventDefault()
     onSubmit({
       jobbType,
-      timepris: Number(timepris),
-      marginProsent: Number(margin),
+      timepris: (tilTall(timepris) ?? 0),
+      marginProsent: (tilTall(margin) ?? -1),
       linjer: linjer
-        .filter((l) => Number(l.antall) > 0)
+        .filter((l) => (tilTall(l.antall) ?? 0) > 0)
         .map((l) => ({
           operasjonId: l.operasjonId,
-          antall: Number(l.antall),
+          antall: (tilTall(l.antall) ?? 0),
           timerPerEnhet: satsFor(l.operasjonId),
-          materialPerEnhet: l.materialPerEnhet === '' ? undefined : Number(l.materialPerEnhet),
+          materialPerEnhet: tilTall(l.materialPerEnhet) ?? undefined,
         })),
       beskrivelse,
       kundenavn,
@@ -152,13 +154,9 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
       <Select id="jobbType" label="Fag" value={jobbType} onChange={(e) => byttFag(e.target.value)} options={JOBBTYPE_OPTIONS} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Input
+        <TallInput
           id="timepris"
           label="Din timepris (kr, eks. mva)"
-          type="number"
-          min="1"
-          max="100000"
-          step="any"
           required
           value={timepris}
           onChange={(e) => setTimepris(e.target.value)}
@@ -166,20 +164,16 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
         />
 
         <div>
-          <Input
+          <TallInput
             id="margin"
             label="Margin (% av salgspris)"
-            type="number"
-            min="0"
-            max="99"
-            step="any"
             required
             value={margin}
             onChange={(e) => setMargin(e.target.value)}
           />
-          {Number(margin) > 0 && Number(margin) < 100 && (
+          {(tilTall(margin) ?? -1) > 0 && (tilTall(margin) ?? -1) < 100 && (
             <p className="mt-2 text-sm text-slate-600">
-              Tilsvarer <strong>{marginSomPaaslag(Number(margin))} % påslag</strong> på kostnaden.
+              Tilsvarer <strong>{marginSomPaaslag((tilTall(margin) ?? -1))} % påslag</strong> på kostnaden.
             </p>
           )}
         </div>
@@ -206,23 +200,16 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
               />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
+                <TallInput
                   id={`antall-${i}`}
                   label={`Antall (${op ? ENHETSTEKST[op.enhet] : ''})`}
-                  type="number"
-                  min="0"
-                  max="100000"
-                  step="any"
                   value={linje.antall}
                   onChange={(e) => endreLinje(i, { antall: e.target.value })}
                   placeholder="f.eks. 45"
                 />
-                <Input
+                <TallInput
                   id={`material-${i}`}
                   label="Materialer (kr per enhet)"
-                  type="number"
-                  min="0"
-                  step="any"
                   value={linje.materialPerEnhet}
                   onChange={(e) => endreLinje(i, { materialPerEnhet: e.target.value })}
                 />
@@ -245,7 +232,7 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
           <h3 className="font-semibold text-slate-900">Regnestykket</h3>
           {forhandsvisning.linjer.map((l, i) => (
             <p key={`${l.operasjonId}-${i}`} className="text-sm text-slate-700">
-              {l.navn}: {l.antall} {l.enhetstekst} × {l.timerPerEnhet} t = {l.timer} t × {Number(timepris).toLocaleString('nb-NO')} kr
+              {l.navn}: {l.antall} {l.enhetstekst} × {l.timerPerEnhet} t = {l.timer} t × {(tilTall(timepris) ?? 0).toLocaleString('nb-NO')} kr
               {' + '}
               {l.materialKr.toLocaleString('nb-NO')} kr materialer → <strong>{l.prisKr.toLocaleString('nb-NO')} kr</strong>
               {' '}({l.prisPerEnhet.toLocaleString('nb-NO')} kr per {l.enhetstekst})

@@ -5,8 +5,10 @@ import { useSession } from 'next-auth/react'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
+import TallInput from '@/components/ui/TallInput'
 import Button from '@/components/ui/Button'
 import Checkbox from '@/components/ui/Checkbox'
+import { tilTall, tilTallIOmraade } from '@/lib/tall'
 
 interface Firma {
   firmanavn: string
@@ -84,8 +86,8 @@ export default function InnstillingerFirmaPage() {
           adresse,
           logoDataUrl,
           bankkonto,
-          betalingsbetingelserDager: Number(betalingsbetingelserDager) || 14,
-          mvaSats: mvaRegistrert ? Number(mvaSats) || 0 : 0,
+          betalingsbetingelserDager: tilTallIOmraade(betalingsbetingelserDager, 1, 365) ?? 14,
+          mvaSats: mvaRegistrert ? tilTall(mvaSats) ?? 0 : 0,
           mvaInkludertStandard,
         }),
       })
@@ -177,11 +179,9 @@ export default function InnstillingerFirmaPage() {
               hint="Vises på fakturaer som ikke er betalt via Stripe."
             />
 
-            <Input
+            <TallInput
               id="betalingsbetingelser"
               label="Betalingsfrist (dager)"
-              type="number"
-              min="1"
               value={betalingsbetingelserDager}
               onChange={(e) => setBetalingsbetingelserDager(e.target.value)}
               hint="Standard forfallsdato på nye fakturaer, med mindre annet velges."
@@ -202,13 +202,9 @@ export default function InnstillingerFirmaPage() {
 
           {mvaRegistrert && (
             <>
-              <Input
+              <TallInput
                 id="mva-sats"
                 label="Mva-sats (%)"
-                type="number"
-                min="0"
-                max="100"
-                step="any"
                 value={mvaSats}
                 onChange={(e) => setMvaSats(e.target.value)}
                 hint="25 % er standardsatsen for håndverkertjenester."

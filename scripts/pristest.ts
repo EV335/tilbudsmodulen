@@ -12,6 +12,7 @@ import { verifiserPris, tekstNevnerPrisen } from '@/lib/ai'
 import { tilPdfTekst } from '@/lib/pdftekst'
 import { formatKr } from '@/lib/format'
 import { lesTilgangsliste, harTilgang } from '@/lib/tilgang'
+import { tilTall, tilTallIOmraade, lesTall } from '@/lib/tall'
 import {
   avvikProsent,
   fordelTimer,
@@ -381,6 +382,39 @@ const tomLinje = beregnTilbud('Maler', [
 sjekk('men en linje uten bade timer og material faller ut',
   linjerFraResultat(tomLinje).length === 0)
 
-const ANTALL = 67
+// 16) Tallesing. Skjemaene brukte type="number", der NETTLESERENS spraak
+//     avgjorde om «7,5» var gyldig. Med engelsk nettleser ble feltet tomt idet
+//     brukeren skrev komma — han sa tallet sitt sta der, mens React hadde tom
+//     streng og lagre-knappen var deaktivert uten et ord om hvorfor.
+sjekk('komma leses som desimalskille', tilTall('7,5') === 7.5)
+sjekk('punktum leses ogsaa', tilTall('7.5') === 7.5)
+sjekk('tomt felt er ikke et tall', tilTall('') === null && tilTall('   ') === null)
+sjekk('tekst er ikke et tall', tilTall('sju') === null)
+sjekk('null er et gyldig tall, ikke tomt', tilTall('0') === 0)
+
+// Et tall kopiert ut av appen skal kunne limes rett inn igjen. nb-NO skiller
+// tusener med HARDT mellomrom (U+00A0) — samme tegn som ga bug 1 i punkt 32.
+sjekk('tall med hardt mellomrom fra appen limes inn igjen',
+  tilTall((48133).toLocaleString('nb-NO')) === 48133,
+  JSON.stringify((48133).toLocaleString('nb-NO')))
+sjekk('vanlig mellomrom som tusenskille godtas', tilTall('10 000') === 10000)
+sjekk('norsk formatering med bade punktum og komma', tilTall('1.234,5') === 1234.5)
+
+// To komma gjor tallet tvetydig — «1,234» kan vaere bade 1234 og 1,234. Da skal
+// det avvises i stedet for at vi gjetter.
+sjekk('tvetydig tall med to komma avvises', tilTall('1,234,5') === null)
+
+sjekk('omraade avviser under minimum', tilTallIOmraade('0', 1, 365) === null)
+sjekk('omraade slipper gjennom innenfor', tilTallIOmraade('30', 1, 365) === 30)
+
+// Serveren maa tale komma av samme grunn: klienten sender videre det brukeren
+// skrev.
+sjekk('serveren godtar komma', lesTall('7,5', 100) === 7.5)
+sjekk('serveren avviser negative tall', lesTall('-1', 100) === 'ugyldig')
+sjekk('serveren avviser over taket', lesTall('101', 100) === 'ugyldig')
+sjekk('serveren skiller tomt fra tull', lesTall('', 100) === null && lesTall('sju', 100) === 'ugyldig')
+sjekk('serveren avviser noe som ikke er tall eller tekst', lesTall(true, 100) === 'ugyldig')
+
+const ANTALL = 83
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)
