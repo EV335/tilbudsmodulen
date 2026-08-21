@@ -1694,6 +1694,36 @@ etterkalkylen er aktiv i produksjon. Jeg bekreftet den ikke utenfra —
 lenger enn det var bedt om.
 
 
+### 37. `APP_URL` satt, og betalingslenkene er levende — 2026-08-20
+
+Punkt 36 fant at `tilbudsmaskinen.no` står parkert. Det åpne spørsmålet var om
+`APP_URL` pekte dit — for da ville hver kunde fått en død betalingslenke i
+faktura-PDF og e-post, uten at noe feilet synlig noe sted.
+
+Spørsmålet lot seg ikke besvare: variabelen er merket **Sensitive** i Vercel,
+og da er verdien skrivebeskyttet. Verken jeg eller du kan lese hva den står til,
+bare overskrive den. Den ble lagt inn 12. august, samme dag som første deploy,
+mens domenet var under oppsett — som passer med at den pekte på det parkerte
+domenet, men det er en slutning, ikke et bevis.
+
+**Satt til vercel.app-adressen** og appen redeployet. Redigeringsskjemaet i
+Vercel hang på «Loading…» og lagret ikke — bekreftet ved at `updatedAt` fortsatt
+var identisk med `createdAt` — så endringen ble gjort gjennom Vercels eget API
+som innlogget bruker. Deretter Redeploy av samme commit (`9902727`), som er det
+som får nye env-verdier inn i en kjørende deploy.
+
+**Verifisert etter redeployen:** forsiden 200, `/api/etterkalkyle` 401,
+`/kunder` 307, ukjent fakturatoken 404, og tilgangslista svarer fortsatt
+`AccessDenied` for en adresse utenfor lista. Ingenting brakk.
+
+**Lærdom for neste gang:** ikke merk `APP_URL` som Sensitive. Den er en offentlig
+URL som står i hver eneste kunde-e-post, ikke en hemmelighet, og Sensitive gjør
+den umulig å ettergå. Det samme gjelder `ALLOWED_EMAILS` — du vil kunne lese hvem
+som står på lista uten å måtte gjette.
+
+**Ikke verifisert:** en ekte betalingslenke ende-til-ende. Det krever en faktura
+med token, altså innlogging i produksjon.
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1768,12 +1798,14 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
    Verifisert utenfra mot den kjørende appen.
 8. ~~**Kjør `migrations/20260817_etterkalkyle.sql`**~~ — **gjort 2026-08-20**,
    se punkt 34. Tabellen finnes, og appen når den.
-9. ⚠️ **`tilbudsmaskinen.no` er ikke koblet til Vercel** — domenet står på
-   registrarens parkeringsside, og appen lever kun på vercel.app-adressen.
-   Peker `APP_URL` på det parkerte domenet, får hver kunde en død
-   betalingslenke i faktura-PDF og e-post, uten at noe feiler synlig. Se
-   punkt 36. Enten koble domenet i Vercel → Domains, eller sette `APP_URL`
-   til vercel.app-adressen inntil videre.
+9. ~~⚠️ **Betalingslenkene kan peke på et parkert domene**~~ — **løst
+   2026-08-20**, se punkt 37. `APP_URL` er satt til vercel.app-adressen og
+   appen redeployet, så lenkene i faktura-PDF og e-post er levende.
+10. **`tilbudsmaskinen.no` er fortsatt ikke koblet til Vercel.** Domenet står
+   på registrarens parkeringsside. Det er ikke lenger ødelagt — bare uten det
+   navnet dere har betalt for: kundene får en `vercel.app`-lenke i fakturaen.
+   Kobles i Vercel → Domains, med A-peker `76.76.21.21` hos registraren.
+   Husk å endre `APP_URL` samtidig, ellers fortsetter lenkene på vercel.app.
 
 ### 5. PR-forsøk blokkert
 Et `create-pr-command` ba om å pushe og opprette en PR. To harde blokkere funnet:
