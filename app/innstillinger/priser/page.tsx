@@ -322,36 +322,42 @@ function Erfaringsboks({
         forslag || materialforslag ? 'border-gold bg-gold/10' : 'border-black/10 bg-black/[0.03]'
       }`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm">
-          <span className="font-bold">
-            Timene dine sier {erfaring.observertTimerPerEnhet.toLocaleString('nb-NO')} t per enhet
-          </span>
-          <span className="text-black/60">
-            {' '}
-            — {erfaring.avvikProsent > 0 ? '+' : ''}
-            {erfaring.avvikProsent} % mot satsen din på{' '}
-            {erfaring.gjeldendeTimerPerEnhet.toLocaleString('nb-NO')}
-          </span>
-          <div className="text-black/50 mt-0.5">
-            {jobbtekst} · {rentekst} · {erfaring.sumAntall.toLocaleString('nb-NO')} enheter til sammen
+      {/* Timeblokka bare naar det FINNES timer. En operasjon kan ha material
+          uten timer — brukeren tar bare betalt for materialet — og da ville
+          denne pastatt «timene dine sier 0 t per enhet» om noe som aldri er
+          malt. */}
+      {erfaring.jobber > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm">
+            <span className="font-bold">
+              Timene dine sier {erfaring.observertTimerPerEnhet.toLocaleString('nb-NO')} t per enhet
+            </span>
+            <span className="text-black/60">
+              {' '}
+              — {erfaring.avvikProsent > 0 ? '+' : ''}
+              {erfaring.avvikProsent} % mot satsen din på{' '}
+              {erfaring.gjeldendeTimerPerEnhet.toLocaleString('nb-NO')}
+            </span>
+            <div className="text-black/50 mt-0.5">
+              {jobbtekst} · {rentekst} · {erfaring.sumAntall.toLocaleString('nb-NO')} enheter til sammen
+            </div>
           </div>
-        </div>
 
-        {forslag && (
-          <Button
-            type="button"
-            size="md"
-            variant="gold"
-            onClick={() => onBruk(erfaring.observertTimerPerEnhet)}
-          >
-            Bruk {erfaring.observertTimerPerEnhet.toLocaleString('nb-NO')}
-          </Button>
-        )}
-      </div>
+          {forslag && (
+            <Button
+              type="button"
+              size="md"
+              variant="gold"
+              onClick={() => onBruk(erfaring.observertTimerPerEnhet)}
+            >
+              Bruk {erfaring.observertTimerPerEnhet.toLocaleString('nb-NO')}
+            </Button>
+          )}
+        </div>
+      )}
 
       {erfaring.material && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t border-black/10">
+        <div className={`flex flex-wrap items-center justify-between gap-3${erfaring.jobber > 0 ? ' mt-3 pt-3 border-t border-black/10' : ''}`}>
           <div className="text-sm">
             <span className="font-bold">
               Materialene kostet {erfaring.material.observertPerEnhet.toLocaleString('nb-NO')} kr per enhet
@@ -380,7 +386,12 @@ function Erfaringsboks({
         </div>
       )}
 
-      {!forslag && !materialforslag && erfaring.jobber < MIN_JOBBER_FOR_FORSLAG && (
+      {/* Bare naar BEGGE sider er under terskelen. Vokter den paa timer alene,
+          pastar den «for faa jobber» om en operasjon med fem forte
+          materialjobber der det egentlig er avviket som er for lite. */}
+      {!forslag &&
+        !materialforslag &&
+        Math.max(erfaring.jobber, erfaring.material?.jobber ?? 0) < MIN_JOBBER_FOR_FORSLAG && (
         <p className="text-xs text-black/50 mt-2">
           Ingen justering foreslås før {MIN_JOBBER_FOR_FORSLAG} jobber er ført — under det er det
           like gjerne en tilfeldig treg dag som et mønster.
