@@ -1,7 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { BeregnetLinje } from '@/lib/priser'
 import { Etterkalkyle, EtterkalkyleLinje } from '@/lib/etterkalkyle'
-import { TilbudResult } from '@/lib/ai'
 
 interface EtterkalkyleRad {
   tilbud_id: string
@@ -21,39 +19,6 @@ function radTilEtterkalkyle(rad: EtterkalkyleRad): Etterkalkyle {
     linjer: rad.linjer ?? [],
     registrert: rad.created_at,
   }
-}
-
-/**
- * Plukker ut det etterkalkylen trenger fra et lagret tilbud.
- *
- * Tilbud laget før linjemodellen (august 2026) har ingen `linjer`. De kan
- * fortsatt få registrert timer — avviket mot `tidsbrukTimer` er like ekte —
- * men de kan ikke lære opp en sats, for vi vet ikke hvilken operasjon timene
- * hørte til. Derfor tom liste og ikke et kast.
- */
-export function linjerFraResultat(resultat: TilbudResult): EtterkalkyleLinje[] {
-  const linjer: BeregnetLinje[] = resultat.linjer ?? []
-  return linjer
-    .filter(
-      (l) =>
-        Number.isFinite(l.antall) &&
-        l.antall > 0 &&
-        // Timer ELLER material. Kravet om timer > 0 var riktig da
-        // oeyeblikksbildet bare tjente timefordelingen. Naa mater det ogsaa
-        // materialfordelingen, og en linje uten timer er fullt gyldig der:
-        // brukeren kan ha satt timesatsen til 0 og bare ta betalt for
-        // materialet. Falt linja ut, ble materialet dens fordelt paa de
-        // andre linjene i stedet — og operasjonen som faktisk brukte
-        // materialet laerte ingenting.
-        ((Number.isFinite(l.timer) && l.timer > 0) ||
-          (Number.isFinite(l.materialKr) && l.materialKr > 0))
-    )
-    .map((l) => ({
-      operasjonId: l.operasjonId,
-      antall: l.antall,
-      estimertTimer: l.timer,
-      estimertMaterialKr: l.materialKr,
-    }))
 }
 
 // Koden blir deployet før migrasjonen kjøres — slik har hver eneste tabell i
@@ -76,10 +41,16 @@ export async function hentEtterkalkyler(userId: string): Promise<Etterkalkyle[]>
     .order('created_at', { ascending: false })
 
   if (error) {
-    // Mangler tabellen (migrasjonen ikke kjørt ennå), skal historikken fortsatt
-    // vises. Etterkalkylen er et tillegg, ikke noe resten av appen henger på.
-    console.error('Klarte ikke å hente etterkalkyler:', error.message)
-    return []
+    // Bare den ene feilen svelges: mangler tabellen (migrasjonen ikke kjørt),
+    // skal historikken fortsatt vises — etterkalkylen er et tillegg, ikke noe
+    // resten av appen henger på. Alt annet kastes videre. Ble hver feil svelget,
+    // ville en forbigående databasefeil sett nøyaktig ut som «ingen jobber
+    // registrert ennå», og satsforslagene forsvunnet uten et ord.
+    if (manglerTabell(error)) {
+      console.error(MANGLER_TABELL)
+      return []
+    }
+    throw new Error(`Klarte ikke å hente etterkalkyler: ${error.message}`)
   }
 
   return (data as EtterkalkyleRad[]).map(radTilEtterkalkyle)

@@ -18,6 +18,7 @@ import {
   fordelMaterial,
   samleErfaring,
   harForslag,
+  linjerFraResultat,
   harMaterialforslag,
   type Etterkalkyle,
 } from '@/lib/etterkalkyle'
@@ -333,6 +334,53 @@ const tidUtenTimer = fordelTimer(2, utenTimer)
 sjekk('men den stjeler ikke timer fra linja som faktisk brukte dem',
   tidUtenTimer.length === 1 && tidUtenTimer[0].operasjonId === 'maler_tak')
 
-const ANTALL = 63
+// En operasjon kan ha material uten timer — brukeren setter timesatsen til 0
+// og tar bare betalt for materialet. Oversikten ble bygget av timefordelingen
+// alene, saa den operasjonen forsvant i stillhet med hele materialkostnaden
+// sin. I et reelt tilfelle sto den for 5000 av 5200 kr estimert material.
+const kunMaterial = [1, 2, 3].map((n) => ({
+  tilbudId: 't' + n,
+  faktiskeTimer: 2,
+  faktiskMaterialKr: 6000,
+  linjer: [
+    { operasjonId: 'maler_vegg', antall: 100, estimertTimer: 0, estimertMaterialKr: 5000 },
+    { operasjonId: 'maler_tak', antall: 10, estimertTimer: 1.5, estimertMaterialKr: 200 },
+  ],
+  registrert: '2026-08-20',
+}))
+const erfaringMedMaterial = samleErfaring(kunMaterial)
+const veggUtenTimer = erfaringMedMaterial.find((e) => e.operasjonId === 'maler_vegg')
+sjekk('operasjon med material men uten timer havner likevel i oversikten',
+  !!veggUtenTimer && !!veggUtenTimer.material && veggUtenTimer.material.jobber === 3,
+  veggUtenTimer ? `${veggUtenTimer.material?.sumFaktiskKr} kr fanget` : 'borte'
+)
+
+// ...men uten timer finnes det ikke grunnlag for et TIMEforslag. Ellers ville
+// fiksen over byttet en tapt operasjon mot en oppdiktet sats.
+sjekk('men den gir ikke satsforslag paa timer den ikke har',
+  !!veggUtenTimer && veggUtenTimer.jobber === 0 && veggUtenTimer.avvikProsent === 0 && !harForslag(veggUtenTimer))
+
+// linjerFraResultat laa tidligere i etterkalkyleLager, som drar inn lib/supabase
+// og dermed krevde env-variabler for aa kjoere. Den er ren regning og bor naa i
+// lib/etterkalkyle, slik at filteret kan ettergaas her — og siden bruker samme
+// funksjon i stedet for en haandkopi som drev fra originalen.
+const medKunMaterial = beregnTilbud('Maler', [
+  { operasjonId: 'maler_vegg', antall: 100, timerPerEnhet: 0, materialPerEnhet: 50 },
+  { operasjonId: 'maler_tak', antall: 10, timerPerEnhet: 0.15, materialPerEnhet: 20 },
+], 800, 20)
+const bilde = linjerFraResultat(medKunMaterial)
+sjekk('oyeblikksbildet beholder en linje som bare har material',
+  bilde.length === 2 &&
+    bilde.some((l) => l.operasjonId === 'maler_vegg' && l.estimertTimer === 0 && (l.estimertMaterialKr ?? 0) > 0),
+  `${bilde.length} av 2 linjer beholdt`)
+
+// ...men en linje uten bade timer og material har ingenting aa laere bort.
+const tomLinje = beregnTilbud('Maler', [
+  { operasjonId: 'maler_vegg', antall: 100, timerPerEnhet: 0, materialPerEnhet: 0 },
+], 800, 20)
+sjekk('men en linje uten bade timer og material faller ut',
+  linjerFraResultat(tomLinje).length === 0)
+
+const ANTALL = 67
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

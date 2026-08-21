@@ -6,9 +6,9 @@ import { erUuid } from '@/lib/uuid'
 import {
   hentEtterkalkyler,
   lagreEtterkalkyle,
-  linjerFraResultat,
   MANGLER_TABELL,
 } from '@/lib/etterkalkyleLager'
+import { linjerFraResultat } from '@/lib/etterkalkyle'
 
 export async function GET() {
   const session = await getServerSession(authOptions)

@@ -7,7 +7,7 @@
 // Denne fila er ren regning, uten database og uten React, slik at både
 // serveren, skjemaet i nettleseren og testene bruker nøyaktig samme tall.
 
-import { Operasjon, Prissatser, finnOperasjon, gjeldendeSats } from '@/lib/priser'
+import { BeregnetLinje, Operasjon, Prissatser, finnOperasjon, gjeldendeSats } from '@/lib/priser'
 
 /**
  * Øyeblikksbilde av tilbudets linjer, tatt da timene ble registrert.
@@ -115,6 +115,42 @@ export function fordelMaterial(
   )
 }
 
+/**
+ * Plukker ut det etterkalkylen trenger fra et lagret tilbud.
+ *
+ * Tilbud laget før linjemodellen (august 2026) har ingen `linjer`. De kan
+ * fortsatt få registrert timer — avviket mot `tidsbrukTimer` er like ekte —
+ * men de kan ikke lære opp en sats, for vi vet ikke hvilken operasjon timene
+ * hørte til. Derfor tom liste og ikke et kast.
+ */
+// Tar bare det den leser: et objekt med linjer. Da godtar den bade et lagret
+// TilbudResult og en fersk BeregnetSum, og den rene regnefila slipper en
+// typeavhengighet til lib/ai.
+export function linjerFraResultat(resultat: { linjer?: BeregnetLinje[] }): EtterkalkyleLinje[] {
+  const linjer: BeregnetLinje[] = resultat.linjer ?? []
+  return linjer
+    .filter(
+      (l) =>
+        Number.isFinite(l.antall) &&
+        l.antall > 0 &&
+        // Timer ELLER material. Kravet om timer > 0 var riktig da
+        // oeyeblikksbildet bare tjente timefordelingen. Naa mater det ogsaa
+        // materialfordelingen, og en linje uten timer er fullt gyldig der:
+        // brukeren kan ha satt timesatsen til 0 og bare ta betalt for
+        // materialet. Falt linja ut, ble materialet dens fordelt paa de
+        // andre linjene i stedet — og operasjonen som faktisk brukte
+        // materialet laerte ingenting.
+        ((Number.isFinite(l.timer) && l.timer > 0) ||
+          (Number.isFinite(l.materialKr) && l.materialKr > 0))
+    )
+    .map((l) => ({
+      operasjonId: l.operasjonId,
+      antall: l.antall,
+      estimertTimer: l.timer,
+      estimertMaterialKr: l.materialKr,
+    }))
+}
+
 export interface Erfaring {
   operasjonId: string
   operasjon: Operasjon
@@ -217,16 +253,26 @@ export function samleErfaring(registreringer: Etterkalkyle[], satser?: Prissatse
   }
 
   const erfaringer: Erfaring[] = []
-  for (const [operasjonId, tall] of samlet) {
+  // Union av begge samlingene. Timesiden kan mangle helt: setter brukeren
+  // timesatsen til 0 og tar bare betalt for materialet, faller linja ut av
+  // timefordelingen — men den har fortsatt en materialkostnad aa laere av.
+  // Ble oversikten bygget av timene alene, forsvant den operasjonen i
+  // stillhet, med hele materialet sitt.
+  const alleOperasjoner = new Set<string>([...samlet.keys(), ...materialer.keys()])
+  for (const operasjonId of alleOperasjoner) {
     const treff = finnOperasjon(operasjonId)
     // En operasjon som er fjernet fra lib/priser.ts siden registreringen ble
     // gjort har ingen sats å foreslå noe for. Da hopper vi over den i stedet
     // for å krasje hele oversikten.
-    if (!treff || tall.antall <= 0) continue
+    if (!treff) continue
+
+    const tall = samlet.get(operasjonId) ?? { jobber: 0, reneJobber: 0, antall: 0, timer: 0 }
+    const harTimer = tall.antall > 0
+    if (!harTimer && !materialer.has(operasjonId)) continue
 
     const sats = gjeldendeSats(treff.operasjon, satser)
     const gjeldende = sats.timerPerEnhet
-    const observert = tall.timer / tall.antall
+    const observert = harTimer ? tall.timer / tall.antall : 0
 
     const mat = materialer.get(operasjonId)
     const observertMaterial = mat && mat.antall > 0 ? mat.kr / mat.antall : null
@@ -241,7 +287,8 @@ export function samleErfaring(registreringer: Etterkalkyle[], satser?: Prissatse
       sumFaktiskTimer: rundTre(tall.timer),
       observertTimerPerEnhet: rundTre(observert),
       gjeldendeTimerPerEnhet: gjeldende,
-      avvikProsent: gjeldende > 0 ? Math.round(((observert - gjeldende) / gjeldende) * 100) : 0,
+      avvikProsent:
+        gjeldende > 0 && harTimer ? Math.round(((observert - gjeldende) / gjeldende) * 100) : 0,
       material:
         mat && observertMaterial !== null
           ? {

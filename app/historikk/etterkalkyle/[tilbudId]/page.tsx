@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { LagretTilbud } from '@/lib/historikk'
-import { avvikProsent, fordelTimer, type EtterkalkyleLinje } from '@/lib/etterkalkyle'
+import { avvikProsent, fordelTimer, linjerFraResultat, type EtterkalkyleLinje } from '@/lib/etterkalkyle'
 import { ENHETSTEKST, finnOperasjon, omfangTekst } from '@/lib/priser'
 import { formatKr, formatDato } from '@/lib/format'
 import Section from '@/components/ui/Section'
@@ -54,11 +54,11 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
       ? avvikProsent(faktiskeTimer, estimerteTimer)
       : null
 
-  // Øyeblikksbildet serveren vil lagre, regnet med samme funksjon her — slik at
-  // fordelingen som vises er den samme som faktisk brukes til å lære opp satsen.
-  const linjer: EtterkalkyleLinje[] = (tilbud?.resultat.linjer ?? [])
-    .filter((l) => l.antall > 0 && l.timer > 0)
-    .map((l) => ({ operasjonId: l.operasjonId, antall: l.antall, estimertTimer: l.timer }))
+  // Øyeblikksbildet serveren vil lagre — samme funksjon, ikke en kopi av den.
+  // Her sto det tidligere en håndkopi, og den hadde allerede drevet fra
+  // originalen: den kastet linjer uten timer, som serveren nå beholder for
+  // materialets skyld. Fordelingen som vises skal være den som lærer opp satsen.
+  const linjer: EtterkalkyleLinje[] = tilbud ? linjerFraResultat(tilbud.resultat) : []
   const fordelt = faktiskeTimer && faktiskeTimer > 0 ? fordelTimer(faktiskeTimer, linjer) : []
 
   // Materialene har sitt eget avvik. Timer og kroner bommer ikke i takt: en
