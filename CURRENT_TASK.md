@@ -1888,6 +1888,54 @@ bygg grønt.
 `app/api/tilbud/*`.
 
 
+### 42. Femte runde, og partneren er sluppet inn — 2026-08-22
+
+**Malervennen har tilgang.** `Maleren.young@gmail.com` er lagt til i
+`ALLOWED_EMAILS` og appen er deployet på nytt.
+
+Verdt å huske hvordan, for det kommer til å skje igjen: Vercel har **ingen
+«legg til»-operasjon** — en PATCH erstatter hele verdien. Og verdien lot seg
+ikke lese ut programmatisk. Løsningen var å bruke Vercels eget redigeringsfelt,
+som fyller inn nåværende verdi for `encrypted`-variabler (i motsetning til
+`sensitive`, som `APP_URL` er): markøren sist i feltet, skriv til på slutten.
+Verdien gikk aldri gjennom noe mellomledd — kun lengden ble kontrollert, 49 →
+74 tegn, med de første 49 urørt.
+
+⚠️ **Sjekk alltid at feltet er forhåndsutfylt før du skriver.** Er det tomt —
+som det er for `sensitive`-variabler — overskriver du i stedet for å legge til,
+og låser deg selv ute.
+
+Verifisert utenfra etter deploy: forsiden 200, `/calc` 307, og to tilfeldige
+adresser får fortsatt `AccessDenied`. At HANS adresse slipper inn er **ikke**
+testet — den eneste måten er å be om en innloggingslenke, og da hadde det gått
+en ekte e-post til innboksen hans uten at noen ba om det. Hans første
+innlogging er testen.
+
+**Femte gjennomgangsrunde — ett funn.** `oppdaterTilbud` brukte `.single()`,
+som kaster når ingen rad matcher. En PATCH mot et tilbud som ikke finnes, eller
+som tilhører en annen bruker, ble dermed 500 med Postgres-tekst i loggen der
+404 er riktig svar. Kunde-ruta har alltid gjort det riktig — `oppdaterKunde`
+returnerer null og ruta svarer 404.
+
+Og halve min egen fiks fra punkt 41 sto igjen: `erUuid`-vakten dekket bare
+`hentTilbud`, ikke `oppdaterTilbud` og `slettTilbud`. **Andre gang samme dag at
+én halvdel av et par ble rettet og den andre glemt** — verdt å notere, siden det
+er nøyaktig feilformen hele gjennomgangen har handlet om.
+
+**Gjennomgått uten funn:** `lib/stripe.ts` (cacher klienten, lar SDK-en styre
+apiVersion — dokumentert valg), `app/api/invoices/[id]` (både rutevakt mot å
+kansellere en betalt faktura og `.neq('status','paid')` i lib-funksjonen), og
+POST/PATCH på tilbud, som begge validerer med `verifiserPris`.
+
+Commit `6a39985`. 92 tester, tsc rent, bygg grønt.
+
+**Status for gjennomgangen: fjorten funn over fem runder.** Betalingsflyten,
+etterkalkylen, tilgangslaget og tallhåndteringen er nå dekket i sin helhet, og
+utbyttet faller — fem funn i første runde, ett i femte. Det som gjenstår er
+ikke lenger kode å lete i, men de tre klikketestene og beslutningen om Stripe
+Connect.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -1959,6 +2007,7 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
    «hva bør dette koste», men «hvor lang tid bruker du på én enhet» — det er
    `timerPerEnhet` modellen regner ut fra. Se `docs/priser.md`.
 7. ~~**Sett `ALLOWED_EMAILS` i Vercel**~~ — **gjort 2026-08-20**, se punkt 36.
+   Malervennen lagt til 2026-08-22, se punkt 42.
    Verifisert utenfra mot den kjørende appen.
 8. ~~**Kjør `migrations/20260817_etterkalkyle.sql`**~~ — **gjort 2026-08-20**,
    se punkt 34. Tabellen finnes, og appen når den.
