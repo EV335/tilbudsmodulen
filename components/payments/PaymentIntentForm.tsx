@@ -87,9 +87,9 @@ function BetalingsSkjema({ returUrl, onSuccess }: { returUrl: string; onSuccess?
   )
 }
 
-// Bedrift-flyt: Stripe Elements innebygd i appen, for kortbetaling (og
-// lagring av betalingsmetode for fremtidig bruk — se setup_future_usage i
-// app/api/payments/create-payment-intent/route.ts).
+// Bedrift-flyt: Stripe Elements innebygd i appen, for kortbetaling.
+// Kortet lagres IKKE for senere bruk — se klargjorPaymentIntent i
+// lib/payments.ts.
 export default function PaymentIntentForm({ invoiceId, token, onSuccess }: PaymentIntentFormProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [feil, setFeil] = useState<string | null>(null)

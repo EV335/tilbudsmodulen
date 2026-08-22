@@ -42,6 +42,7 @@ async function behandleInvoiceBetalt(
   invoiceId: string | undefined,
   event: Stripe.Event,
   betalingsType: 'checkout' | 'payment_intent',
+  alleredeSett: boolean,
   stripeCheckoutSessionId?: string,
   stripePaymentIntentId?: string
 ) {
@@ -68,10 +69,16 @@ async function behandleInvoiceBetalt(
   // Idempotency-sjekken over fanger ikke dette, siden event-id-ene er ulike.
   // Da skal vi ikke sende PDF/e-post en gang til — men det må varsles.
   if (faktura.status === 'paid') {
-    console.error(
-      `VARSEL: faktura ${faktura.invoice_number} var allerede betalt da Stripe-event ${event.id} kom inn. ` +
-        'Mulig dobbeltbetaling — sjekk payments-tabellen og refunder ved behov.'
-    )
+    // Bare NYE event-id-er er mistenkelige. Er dette Stripes gjenlevering av
+    // et event vi alt har sett, er «allerede betalt» nøyaktig som forventet, og
+    // et varsel her ville sendt håndverkeren på jakt etter en dobbeltbetaling
+    // som ikke finnes.
+    if (!alleredeSett) {
+      console.error(
+        `VARSEL: faktura ${faktura.invoice_number} var allerede betalt da Stripe-event ${event.id} kom inn. ` +
+          'Mulig dobbeltbetaling — sjekk payments-tabellen og refunder ved behov.'
+      )
+    }
     return
   }
 
@@ -138,12 +145,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Idempotency: samme event kan i prinsippet leveres flere ganger
-    // (Stripes at-least-once-garanti). Har vi allerede en payments-rad for
-    // denne event-id-en, er den ferdigbehandlet — ikke gjør noe mer.
-    if (await harBehandletStripeEvent(event.id)) {
-      return NextResponse.json({ received: true, dedup: true })
-    }
+    // Idempotency, men UTEN å returnere tidlig.
+    //
+    // Merket er raden lagreBetaling skriver, og den skrives FØR fakturaen
+    // markeres betalt. Returnerte vi her, ville rekkefølgen vært farlig: ryker
+    // markerFakturaBetalt — en forbigående databasefeil holder — svarer ruta
+    // 500, Stripe prøver igjen, og forsøk to ville sett merket og svart 200
+    // uten å gjøre noe. Fakturaen ble stående ubetalt for alltid, med pengene
+    // tatt, og retryen så vellykket ut.
+    //
+    // Nå kjøres behandlingen om igjen i stedet. Den tåler det: lagreBetaling
+    // svelger unique-violation på event-id-en, og PDF/e-post er allerede voktet
+    // av statussjekken. Flagget brukes kun til å dempe varselet om
+    // dobbeltbetaling, som ellers ville slått til på hver gjenlevering.
+    const alleredeSett = await harBehandletStripeEvent(event.id)
 
     switch (event.type) {
       // «completed» betyr at kunden fullførte sesjonen, IKKE at pengene er
@@ -164,12 +179,12 @@ export async function POST(req: NextRequest) {
           )
           break
         }
-        await behandleInvoiceBetalt(session.metadata?.invoiceId, event, 'checkout', session.id, undefined)
+        await behandleInvoiceBetalt(session.metadata?.invoiceId, event, 'checkout', alleredeSett, session.id, undefined)
         break
       }
       case 'payment_intent.succeeded': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent
-        await behandleInvoiceBetalt(paymentIntent.metadata?.invoiceId, event, 'payment_intent', undefined, paymentIntent.id)
+        await behandleInvoiceBetalt(paymentIntent.metadata?.invoiceId, event, 'payment_intent', alleredeSett, undefined, paymentIntent.id)
         break
       }
       case 'payment_intent.payment_failed': {

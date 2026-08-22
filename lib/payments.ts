@@ -406,7 +406,12 @@ export async function klargjorPaymentIntent(faktura: Faktura): Promise<string> {
     currency: faktura.currency,
     customer: stripeCustomerId,
     automatic_payment_methods: { enabled: true },
-    setup_future_usage: 'off_session',
+    // Bevisst UTEN setup_future_usage. Den ba om fullmakt til å trekke kortet
+    // senere uten kunden til stede — en fullmakt appen aldri har brukt: det
+    // finnes ingen kode som belaster off-session noe sted. I EØS endrer den
+    // hva kunden faktisk samtykker til, så den skal ikke stå her «i tilfelle».
+    // Skal lagret kort tas i bruk senere, hører den hjemme sammen med koden
+    // som bruker den, og med en tekst i skjemaet som sier fra.
     metadata: { invoiceId: faktura.id },
   })
 
