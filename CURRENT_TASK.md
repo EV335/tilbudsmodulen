@@ -1805,6 +1805,89 @@ mintet er verdiløst andre steder.
 fakturatoken 404, og tilgangslista svarer fortsatt `AccessDenied`.
 
 
+### 40. Komma-rundturen, og en felle i sammenligningen — 2026-08-21
+
+Oppfølging av punkt 39. Feltene tok imot «7,5», men femten steder satte tall
+INN i dem med `String(7.5)` — så brukeren tastet komma, lagret, åpnet igjen og
+så punktum. `tilFeltTekst()` er nå motstykket til `tilTall()`, og rundturen
+tall → felt → tall er testet tapsfri.
+
+Fella underveis er verdt å huske: «endret»-sammenligningen på Mine satser holdt
+feltteksten mot `String(sats.timerPerEnhet)`. Hadde bare visningen byttet
+format, ville siden trodd at hvert felt var endret hele tiden. Derfor ble alle
+femten stedene lest før ett ble endret.
+
+Samtidig: fakturabeløpet mistet HTML-valideringen `min="1"` da feltet gikk fra
+`type="number"`. Vakten ligger nå klientsiden, i samme mønster som kundevalget
+rett over i samme funksjon. Commit `f0a92a1`.
+
+### 41. Betalingsflyten med friske øyne — fire runder, tolv funn — 2026-08-21
+
+Én linse forklarer nesten alle funnene: **par som har kommet i utakt.** En
+lærdom ble anvendt ett sted og ikke det andre. Koden er gjennomtenkt der noen
+har tenkt — feilene ligger i overgangene mellom to steder som skulle sagt det
+samme.
+
+**De to alvorligste:**
+
+*En retry kunne la fakturaen stå ubetalt med pengene tatt.* Webhooken skrev
+idempotency-merket før arbeidet var ferdig: `lagreBetaling` inserter
+payments-raden med `stripe_event_id`, og FØRST deretter markeres fakturaen
+betalt. Ryker `markerFakturaBetalt` — en forbigående databasefeil holder —
+svarer ruta 500, Stripe prøver igjen, og forsøk to så merket og returnerte
+`{dedup:true}` uten å gjøre noe. Fakturaen ble stående ubetalt for alltid, PDF
+og e-post usendt, og retryen så vellykket ut i Stripe-dashbordet. Dedup-sjekken
+returnerer ikke lenger tidlig; behandlingen kjøres om igjen og tåler det.
+
+*Logo-opplastingen tok imot hva som helst.* Filendelsen kom fra klientens egen
+mime-streng, og `contentType` ble sendt urørt til et OFFENTLIG Storage-bucket —
+en innlogget bruker kunne lastet opp `text/html` og fått en offentlig URL som
+serverte det. Nå fast liste over PNG/JPG/WEBP, endelsen fra vår liste, SVG
+utelatt (script), og grense på 2 MB.
+
+**De øvrige ti:**
+
+1. Kundens e-post ble aldri validert. Feilen dukket først opp ved utsending —
+   som i webhook-løpet skjer etter at betalingen er registrert, og der svelges
+   den med vilje. Håndverkeren satt igjen med en betalt faktura han trodde var
+   sendt. `lib/epost.ts`, med vilje romslig.
+2. `erUuid` fantes, men bare de nyeste rutene brukte den, selv om kommentaren i
+   `lib/uuid.ts` sier at vakten hører hjemme ett sted. Ligger nå i
+   `hentFaktura`, `hentKunde` og `hentTilbud`, så alle rutene arver den.
+3. PaymentIntent ba om `setup_future_usage: 'off_session'` — fullmakt til å
+   trekke kortet senere uten kunden til stede. Ingen kode i appen belaster
+   off-session. Fjernet.
+4. Kundens betalingsside åpnet betalingsskjemaet igjen etter at bekreftelsen
+   gikk ut på tid — rett under linja som sa at betalingen var gjennomført.
+5. Fakturadetaljsiden er tvillingen til den, med samme konstanter og samme
+   felle. Den sto ufikset etter at kundesiden var rettet — samme mønster som
+   hele denne gjennomgangen handler om.
+6. De innloggede betalingsrutene sendte rå `err.message` til klienten, der de
+   offentlige bevisst ikke gjør det.
+7. PDF-en hadde sin egen statusordliste, identisk med `FAKTURA_STATUS_LABEL`.
+8. `betalingsbetingelser_dager` ble ikke klampet server-side.
+9. Ingen størrelsesgrense på logo-opplasting.
+10. Varselet om dobbeltbetaling slo til på hver gjenlevering fra Stripe, ikke
+    bare på ekte nye event-id-er.
+
+**Gjennomgått uten funn:** mva-beregningen (240 000 kombinasjoner, null sprik i
+at fakturalinjene summerer seg eksakt), de offentlige betalingsrutene,
+statusmaskinen, `klargjorPaymentIntent`, resend-ruta mot webhooken, og
+`InvoiceView`, som bruker alle de delte hjelperne uten egne kopier.
+Fakturanummereringens fallback til én global sekvens er ikke aktiv, fordi
+migrasjonen 20260810 er kjørt.
+
+**Én hypotese, ikke bekreftet:** punkt 3 kan henge sammen med den åpne saken der
+Bedrift-kunden ser «A processing error occurred.» selv om betalingen går
+gjennom. Det krever en ekte betaling over HTTPS for å avgjøres.
+
+Commits `8dcd1b3`, `9df53b1`, `194970a`, `d57a2de`. 92 tester, tsc rent,
+bygg grønt.
+
+**Fortsatt ikke gjennomgått:** `lib/stripe.ts`, `app/api/invoices/[id]`,
+`app/api/tilbud/*`.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
