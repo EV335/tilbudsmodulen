@@ -25,10 +25,17 @@ export async function hentPrissatser(userId: string): Promise<Prissatser> {
     .eq('user_id', userId)
 
   if (error) {
-    // Mangler tabellen (migrasjonen ikke kjørt ennå), skal appen fortsatt virke
-    // med standardsatsene i stedet for å feile hele kalkulatoren.
-    console.error('Klarte ikke å hente prissatser, bruker standardsatser:', error.message)
-    return {}
+    // Bare den ene feilen svelges: mangler tabellen (migrasjonen ikke kjørt),
+    // skal kalkulatoren fortsatt virke med standardsatsene. Alt annet kastes
+    // videre. Ble hver feil svelget, ville en forbigående databasefeil gitt et
+    // tilbud priset med bokens satser i stedet for håndverkerens egne — uten
+    // at noe sa fra, og han ville sendt det til kunden.
+    // 42P01 = undefined_table.
+    if ((error as { code?: string }).code === '42P01') {
+      console.error('prissatser-tabellen finnes ikke — bruker standardsatser. Kjør migrasjonen 20260813_prissatser.sql.')
+      return {}
+    }
+    throw new Error(`Klarte ikke å hente prissatser: ${error.message}`)
   }
 
   const satser: Prissatser = {}

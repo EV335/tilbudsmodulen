@@ -37,5 +37,8 @@ export function appUrl(): string {
     }
     return 'http://localhost:3000'
   }
-  return url
+  // Skraastrek til slutt fjernes. Kallerne setter selv på stien («${base}/betal/...»),
+  // så en APP_URL som slutter på / ga doble skråstreker i hver eneste
+  // betalingslenke kunden fikk.
+  return url.replace(/\/+$/, '')
 }

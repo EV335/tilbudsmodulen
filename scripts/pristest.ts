@@ -14,6 +14,7 @@ import { formatKr } from '@/lib/format'
 import { lesTilgangsliste, harTilgang } from '@/lib/tilgang'
 import { tilTall, tilTallIOmraade, lesTall, tilFeltTekst } from '@/lib/tall'
 import { erEpost, lesEpost } from '@/lib/epost'
+import { appUrl } from '@/lib/env'
 import {
   avvikProsent,
   fordelTimer,
@@ -444,6 +445,15 @@ sjekk('mellomrom avvises', !erEpost('ola @firma.no'))
 sjekk('tomt felt skiller seg fra ugyldig',
   lesEpost('') === null && lesEpost(undefined) === null && lesEpost('ola@firma') === 'ugyldig')
 
-const ANTALL = 92
+// 18) appUrl() bygger betalingslenken i faktura-PDF og e-post. Kallerne setter
+//     selv paa stien, saa en APP_URL som slutter paa skraastrek ga doble
+//     skraastreker i hver eneste lenke kunden fikk.
+process.env.APP_URL = 'https://eksempel.no/'
+sjekk('skraastrek til slutt fjernes fra appUrl', appUrl() === 'https://eksempel.no')
+process.env.APP_URL = 'https://eksempel.no'
+sjekk('adresse uten skraastrek er urort', appUrl() === 'https://eksempel.no')
+delete process.env.APP_URL
+
+const ANTALL = 94
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)
