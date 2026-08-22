@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { hentKunde, oppdaterKunde, slettKunde, KundeHarFakturaerError, KundeType } from '@/lib/payments'
+import { lesEpost } from '@/lib/epost'
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -26,10 +27,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: 'Navn er påkrevd.' }, { status: 400 })
     }
 
+    // E-posten avvises HER, ikke naar fakturaen skal sendes. I webhook-loepet
+    // skjer utsendingen etter at betalingen er registrert, og en feil der
+    // svelges med vilje — handverkeren ville sittet med en betalt faktura han
+    // trodde var sendt, og en kunde som aldri fikk noe.
+    const epost = lesEpost(body.epost)
+    if (epost === 'ugyldig') {
+      return NextResponse.json({ error: 'E-postadressen ser ikke riktig ut.' }, { status: 400 })
+    }
+
     const oppdatert = await oppdaterKunde(session.user.id, params.id, {
       type: body.type,
       navn: body.navn,
-      epost: body.epost,
+      epost,
       telefon: body.telefon,
       adresse: body.adresse,
       orgnr: body.orgnr,

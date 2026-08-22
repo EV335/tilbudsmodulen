@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import nodemailer from 'nodemailer'
+import { FAKTURA_STATUS_LABEL } from '@/lib/fakturaStatus'
 import { supabase } from '@/lib/supabase'
 import { Faktura, settFakturaPdfUrl, fakturaBelop } from '@/lib/payments'
 import { formatKr } from '@/lib/format'
@@ -213,14 +214,10 @@ export async function genererFakturaPdf(faktura: Faktura, firma: FirmaInfo | nul
     skriv(`Forfallsdato: ${new Date(faktura.due_date).toLocaleDateString('nb-NO')}`, margLeft, y)
     y += 14
   }
-  const statusTekst: Record<Faktura['status'], string> = {
-    draft: 'Utkast',
-    pending: 'Venter på betaling',
-    paid: 'Betalt',
-    failed: 'Betaling feilet',
-    cancelled: 'Kansellert',
-  }
-  skriv(`Status: ${statusTekst[faktura.status]}`, margLeft, y)
+  // Samme ordliste som skjermen bruker. Sto her som en egen kopi, og et
+  // navnebytte i lib/fakturaStatus.ts ville gitt en PDF og et grensesnitt som
+  // sa ulike ting om samme faktura — kundens papir mot handverkerens skjerm.
+  skriv(`Status: ${FAKTURA_STATUS_LABEL[faktura.status]}`, margLeft, y)
   y += 14
   if (faktura.paid_at) {
     skriv(`Betalt: ${new Date(faktura.paid_at).toLocaleDateString('nb-NO')}`, margLeft, y)

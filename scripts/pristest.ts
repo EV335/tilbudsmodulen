@@ -13,6 +13,7 @@ import { tilPdfTekst } from '@/lib/pdftekst'
 import { formatKr } from '@/lib/format'
 import { lesTilgangsliste, harTilgang } from '@/lib/tilgang'
 import { tilTall, tilTallIOmraade, lesTall, tilFeltTekst } from '@/lib/tall'
+import { erEpost, lesEpost } from '@/lib/epost'
 import {
   avvikProsent,
   fordelTimer,
@@ -427,6 +428,22 @@ sjekk('rundturen tall -> felt -> tall er tapsfri',
   rundtur.every((n) => tilTall(tilFeltTekst(n)) === n),
   rundtur.map((n) => tilFeltTekst(n)).join(' '))
 
-const ANTALL = 86
+// 17) E-postvalidering. Kundens adresse ble aldri sjekket: «ola@firma» uten
+//     toppdomene ble lagret uten innvending og feilet forst naar fakturaen
+//     skulle sendes — etter at betalingen var registrert, der feilen svelges
+//     med vilje. Med vilje romslig: avviser den en gyldig adresse med plusstegn
+//     eller underdomene, har vi laget et verre problem enn det vi loste.
+sjekk('vanlig adresse godtas', erEpost('ola@firma.no'))
+sjekk('plusstegn og underdomene godtas',
+  erEpost('ola+faktura@post.firma.no'))
+sjekk('adresse uten toppdomene avvises', !erEpost('ola@firma'))
+sjekk('adresse uten krollalfa avvises', !erEpost('ola.firma.no'))
+sjekk('mellomrom avvises', !erEpost('ola @firma.no'))
+
+// Tomt felt betyr «ikke oppgitt», ikke «ugyldig» — adressen er valgfri.
+sjekk('tomt felt skiller seg fra ugyldig',
+  lesEpost('') === null && lesEpost(undefined) === null && lesEpost('ola@firma') === 'ugyldig')
+
+const ANTALL = 92
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

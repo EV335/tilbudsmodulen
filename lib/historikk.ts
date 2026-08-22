@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { erUuid } from '@/lib/uuid'
 import { TilbudInput, TilbudResult } from '@/lib/ai'
 
 export interface LagretTilbud {
@@ -37,7 +38,11 @@ export async function hentAlleTilbud(userId: string): Promise<LagretTilbud[]> {
   return (data as TilbudRad[]).map(radTilLagretTilbud)
 }
 
+// Vakten hoerer hjemme her, ikke i hver rute: en feilformet id ga ellers
+// «invalid input syntax for type uuid» fra Postgres og ble til 500, der
+// riktig svar er 404. Samme grunn som i hentFakturaByPublicToken.
 export async function hentTilbud(userId: string, id: string): Promise<LagretTilbud | null> {
+  if (!erUuid(id)) return null
   const { data, error } = await supabase
     .from('tilbud')
     .select('id, created_at, data')

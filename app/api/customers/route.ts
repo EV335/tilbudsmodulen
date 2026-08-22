@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { hentKunder, opprettKunde, KundeType } from '@/lib/payments'
+import { lesEpost } from '@/lib/epost'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -41,10 +42,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Navn er påkrevd.' }, { status: 400 })
     }
 
+    // E-posten avvises HER, ikke naar fakturaen skal sendes. I webhook-loepet
+    // skjer utsendingen etter at betalingen er registrert, og en feil der
+    // svelges med vilje — handverkeren ville sittet med en betalt faktura han
+    // trodde var sendt, og en kunde som aldri fikk noe.
+    const epost = lesEpost(body.epost)
+    if (epost === 'ugyldig') {
+      return NextResponse.json({ error: 'E-postadressen ser ikke riktig ut.' }, { status: 400 })
+    }
+
     const kunde = await opprettKunde(session.user.id, {
       type: body.type,
       navn: body.navn,
-      epost: body.epost,
+      epost,
       telefon: body.telefon,
       adresse: body.adresse,
       orgnr: body.orgnr,

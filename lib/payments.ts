@@ -64,7 +64,11 @@ export async function hentKunder(userId: string): Promise<Kunde[]> {
   return data as Kunde[]
 }
 
+// Vakten hoerer hjemme her, ikke i hver rute: en feilformet id ga ellers
+// «invalid input syntax for type uuid» fra Postgres og ble til 500, der
+// riktig svar er 404. Samme grunn som i hentFakturaByPublicToken.
 export async function hentKunde(userId: string, id: string): Promise<Kunde | null> {
+  if (!erUuid(id)) return null
   const { data, error } = await supabase
     .from('customers')
     .select('*')
@@ -262,7 +266,11 @@ export function tilOffentligFaktura(faktura: Faktura, firmanavn: string | null):
   }
 }
 
+// Vakten hoerer hjemme her, ikke i hver rute: en feilformet id ga ellers
+// «invalid input syntax for type uuid» fra Postgres og ble til 500, der
+// riktig svar er 404. Samme grunn som i hentFakturaByPublicToken.
 export async function hentFaktura(userId: string, id: string): Promise<Faktura | null> {
+  if (!erUuid(id)) return null
   const { data, error } = await supabase
     .from('invoices')
     .select('*, kunde:customers(*)')
