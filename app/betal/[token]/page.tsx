@@ -26,6 +26,7 @@ export default function OffentligBetalingsSide() {
   const [faktura, setFaktura] = useState<OffentligFaktura | null>(null)
   const [feil, setFeil] = useState<string | null>(null)
   const [bekreftelseUtlopt, setBekreftelseUtlopt] = useState(false)
+  const [betalLikevel, setBetalLikevel] = useState(false)
 
   const betalt = searchParams.get('betalt') === '1'
   const avbrutt = searchParams.get('avbrutt') === '1'
@@ -87,7 +88,13 @@ export default function OffentligBetalingsSide() {
   }
 
   const venterPaBekreftelse = betalt && faktura.status !== 'paid' && !bekreftelseUtlopt
-  const kanBetale = kanBetales(faktura.status) && !venterPaBekreftelse
+  // Ga bekreftelsen ut pa tid for en kunde som NETTOPP betalte, skal ikke
+  // betalingsskjemaet dukke opp igjen av seg selv. Da sto det en invitasjon til
+  // a betale en gang til rett under linja som sa at betalingen var gjennomfort
+  // — og dobbeltbetalingen webhooken advarer om er nettopp den.
+  const bekreftelseGaUt = betalt && bekreftelseUtlopt && faktura.status !== 'paid'
+  const kanBetale =
+    kanBetales(faktura.status) && !venterPaBekreftelse && (!bekreftelseGaUt || betalLikevel)
 
   return (
     <Section size="sm" spacing="roomy">
@@ -136,6 +143,21 @@ export default function OffentligBetalingsSide() {
         {venterPaBekreftelse && (
           <Card padding="md">
             <p className="text-black/70">Bekrefter betalingen hos Stripe...</p>
+          </Card>
+        )}
+
+        {bekreftelseGaUt && !betalLikevel && (
+          <Card padding="md">
+            <p className="font-bold mb-2">Vi har ikke fått bekreftelsen ennå</p>
+            <p className="text-black/70 mb-4">
+              Betalingen din er registrert hos Stripe, men statusen her har ikke
+              oppdatert seg. Det ordner seg som regel av seg selv i løpet av noen
+              minutter. <strong>Ikke betal på nytt</strong> — ta heller kontakt med
+              avsenderen hvis fakturaen fortsatt står ubetalt i morgen.
+            </p>
+            <Button type="button" variant="link" onClick={() => setBetalLikevel(true)}>
+              Jeg har ikke betalt — vis betaling likevel
+            </Button>
           </Card>
         )}
 

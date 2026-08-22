@@ -35,7 +35,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ clientSecret })
   } catch (err) {
     console.error('Feil i /api/payments/create-payment-intent:', err)
-    const message = err instanceof Error ? err.message : 'Klarte ikke å starte betaling.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    // Generisk utad, som i de offentlige motstykkene. err.message har vaert ra
+    // Postgres-tekst («invalid input syntax for type uuid») og Stripe-interne
+    // meldinger — ingen av delene sier hantverkeren noe han kan handle pa, og
+    // de hoerer hjemme i serverloggen over.
+    return NextResponse.json({ error: 'Klarte ikke å starte betaling.' }, { status: 500 })
   }
 }
