@@ -8,7 +8,7 @@ import { LagretTilbud } from '@/lib/historikk'
 import { avvikProsent, fordelTimer, linjerFraResultat, type EtterkalkyleLinje } from '@/lib/etterkalkyle'
 import { ENHETSTEKST, finnOperasjon, omfangTekst } from '@/lib/priser'
 import { formatKr, formatDato } from '@/lib/format'
-import { tilTall } from '@/lib/tall'
+import { tilTall, tilFeltTekst } from '@/lib/tall'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
@@ -40,8 +40,8 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
         const min = (alle ?? []).find((e: { tilbudId: string }) => e.tilbudId === params.tilbudId)
         if (min) {
           setRegistrert(true)
-          setTimer(String(min.faktiskeTimer))
-          setMaterial(min.faktiskMaterialKr === undefined ? '' : String(min.faktiskMaterialKr))
+          setTimer(tilFeltTekst(min.faktiskeTimer))
+          setMaterial(min.faktiskMaterialKr === undefined ? '' : tilFeltTekst(min.faktiskMaterialKr))
           setNotat(min.notat ?? '')
         }
       })

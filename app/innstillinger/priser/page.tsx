@@ -17,7 +17,7 @@ import Input from '@/components/ui/Input'
 import TallInput from '@/components/ui/TallInput'
 import Button from '@/components/ui/Button'
 import { formatKr } from '@/lib/format'
-import { tilTall } from '@/lib/tall'
+import { tilTall, tilFeltTekst } from '@/lib/tall'
 
 // Timeprisen brukes bare til å vise hva satsen betyr i kroner per enhet, slik at
 // håndverkeren kan sammenligne med markedsbåndet mens han justerer.
@@ -170,8 +170,8 @@ function OperasjonRad({
   onLagre: (id: string, timer: number | null, material: number | null) => void
 }) {
   const sats = gjeldendeSats(op, satser)
-  const [timer, setTimer] = useState(String(sats.timerPerEnhet))
-  const [material, setMaterial] = useState(String(sats.materialPerEnhet))
+  const [timer, setTimer] = useState(tilFeltTekst(sats.timerPerEnhet))
+  const [material, setMaterial] = useState(tilFeltTekst(sats.materialPerEnhet))
 
   // Et tomt felt betyr «bruk standarden», ikke null timer. Uten dette ga
   // Number('') = 0: tømte du feltet og lagret, fikk operasjonen satsen 0 —
@@ -193,7 +193,8 @@ function OperasjonRad({
     FAG[fagNavn].marginProsent
   )
 
-  const endret = timer !== String(sats.timerPerEnhet) || material !== String(sats.materialPerEnhet)
+  const endret =
+    timer !== tilFeltTekst(sats.timerPerEnhet) || material !== tilFeltTekst(sats.materialPerEnhet)
 
   return (
     <Card padding="md">
@@ -243,11 +244,11 @@ function OperasjonRad({
             // Feltet må settes i tillegg til lagringen: verdien i inputen er
             // lokal state satt ved montering, og ville ellers stått igjen med
             // den gamle satsen mens databasen hadde den nye.
-            setTimer(String(nyTimersats))
+            setTimer(tilFeltTekst(nyTimersats))
             onLagre(op.id, nyTimersats, tallEllerNull(material))
           }}
           onBrukMaterial={(nyMaterialsats) => {
-            setMaterial(String(nyMaterialsats))
+            setMaterial(tilFeltTekst(nyMaterialsats))
             onLagre(op.id, tallEllerNull(timer), nyMaterialsats)
           }}
         />
@@ -274,8 +275,8 @@ function OperasjonRad({
             type="button"
             variant="link"
             onClick={() => {
-              setTimer(String(op.timerPerEnhet))
-              setMaterial(String(op.materialPerEnhet))
+              setTimer(tilFeltTekst(op.timerPerEnhet))
+              setMaterial(tilFeltTekst(op.materialPerEnhet))
               onLagre(op.id, null, null)
             }}
           >

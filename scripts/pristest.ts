@@ -12,7 +12,7 @@ import { verifiserPris, tekstNevnerPrisen } from '@/lib/ai'
 import { tilPdfTekst } from '@/lib/pdftekst'
 import { formatKr } from '@/lib/format'
 import { lesTilgangsliste, harTilgang } from '@/lib/tilgang'
-import { tilTall, tilTallIOmraade, lesTall } from '@/lib/tall'
+import { tilTall, tilTallIOmraade, lesTall, tilFeltTekst } from '@/lib/tall'
 import {
   avvikProsent,
   fordelTimer,
@@ -415,6 +415,18 @@ sjekk('serveren avviser over taket', lesTall('101', 100) === 'ugyldig')
 sjekk('serveren skiller tomt fra tull', lesTall('', 100) === null && lesTall('sju', 100) === 'ugyldig')
 sjekk('serveren avviser noe som ikke er tall eller tekst', lesTall(true, 100) === 'ugyldig')
 
-const ANTALL = 83
+// tilFeltTekst er motstykket til tilTall: den setter et tall INN i feltet.
+// Uten den taster brukeren «7,5», lagrer, apner igjen og ser «7.5» — fordi
+// String(7.5) gir punktum. Rundturen ma vaere tapsfri, ellers sprer feilen seg
+// til «endret»-sammenligningen paa Mine satser, som ville trodd at hvert felt
+// var endret hele tiden.
+sjekk('tall settes inn i feltet med komma', tilFeltTekst(7.5) === '7,5')
+sjekk('heltall far ikke komma', tilFeltTekst(25) === '25')
+const rundtur = [0, 0.025, 0.15, 7.5, 25, 812.5, 1234.75, 100000]
+sjekk('rundturen tall -> felt -> tall er tapsfri',
+  rundtur.every((n) => tilTall(tilFeltTekst(n)) === n),
+  rundtur.map((n) => tilFeltTekst(n)).join(' '))
+
+const ANTALL = 86
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

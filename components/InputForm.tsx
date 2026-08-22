@@ -13,7 +13,7 @@ import {
   ENHETSTEKST,
   type Prissatser,
 } from '@/lib/priser'
-import { tilTall } from '@/lib/tall'
+import { tilTall, tilFeltTekst } from '@/lib/tall'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
@@ -51,14 +51,14 @@ function nyLinje(jobbType: string, satser?: Prissatser, operasjonId?: string): L
     id: ++linjeTeller,
     operasjonId: valgt.id,
     antall: '',
-    materialPerEnhet: String(sats.materialPerEnhet),
+    materialPerEnhet: tilFeltTekst(sats.materialPerEnhet),
   }
 }
 
 export default function InputForm({ onSubmit, loading, error, satser }: InputFormProps) {
   const [jobbType, setJobbType] = useState('Maler')
   const [timepris, setTimepris] = useState('')
-  const [margin, setMargin] = useState(String(FAG.Maler.marginProsent))
+  const [margin, setMargin] = useState(tilFeltTekst(FAG.Maler.marginProsent))
   const [linjer, setLinjer] = useState<LinjeSkjema[]>([nyLinje('Maler', satser)])
   const [beskrivelse, setBeskrivelse] = useState('')
   const [kundenavn, setKundenavn] = useState('')
@@ -92,7 +92,7 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
       return
     }
     setJobbType(nyttFag)
-    setMargin(String(hentFag(nyttFag).marginProsent))
+    setMargin(tilFeltTekst(hentFag(nyttFag).marginProsent))
     setLinjer([nyLinje(nyttFag, satser)])
   }
 
@@ -105,7 +105,7 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
         // ellers står 450 kr/m² flis igjen på en malerlinje.
         if (endring.operasjonId && endring.operasjonId !== l.operasjonId) {
           const nyOp = hentOperasjon(jobbType, endring.operasjonId)
-          oppdatert.materialPerEnhet = nyOp ? String(gjeldendeSats(nyOp, satser).materialPerEnhet) : '0'
+          oppdatert.materialPerEnhet = nyOp ? tilFeltTekst(gjeldendeSats(nyOp, satser).materialPerEnhet) : '0'
         }
         return oppdatert
       })

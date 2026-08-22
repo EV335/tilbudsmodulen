@@ -8,7 +8,7 @@ import Input from '@/components/ui/Input'
 import TallInput from '@/components/ui/TallInput'
 import Button from '@/components/ui/Button'
 import Checkbox from '@/components/ui/Checkbox'
-import { tilTall, tilTallIOmraade } from '@/lib/tall'
+import { tilTall, tilTallIOmraade, tilFeltTekst } from '@/lib/tall'
 
 interface Firma {
   firmanavn: string
@@ -52,12 +52,12 @@ export default function InnstillingerFirmaPage() {
           setOrgnr(data.orgnr ?? '')
           setAdresse(data.adresse ?? '')
           setBankkonto(data.bankkonto ?? '')
-          setBetalingsbetingelserDager(String(data.betalingsbetingelser_dager ?? 14))
+          setBetalingsbetingelserDager(tilFeltTekst(data.betalingsbetingelser_dager ?? 14))
           const sats = Number(data.mva_sats ?? 0)
           setMvaRegistrert(sats > 0)
           // Beholder 25 i feltet nar satsen er 0, sa avkrysningen gir en
           // brukbar sats med en gang i stedet for a starte pa null.
-          if (sats > 0) setMvaSats(String(sats))
+          if (sats > 0) setMvaSats(tilFeltTekst(sats))
           setMvaInkludertStandard(Boolean(data.mva_inkludert_standard))
           setEksisterendeLogoUrl(data.logo_url ?? null)
         }

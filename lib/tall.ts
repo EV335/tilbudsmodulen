@@ -33,6 +33,17 @@ export function tilTall(tekst: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Motstykket til tilTall: setter et tall INN i et felt.
+ *
+ * Uten denne taster brukeren «7,5», lagrer, apner igjen — og ser «7.5», fordi
+ * String(7.5) gir punktum. Ingen tusenskille, slik at teksten kan leses rett
+ * tilbake av tilTall() uten omveier.
+ */
+export function tilFeltTekst(n: number): string {
+  return String(n).replace('.', ',')
+}
+
 /** Tolker, men holder seg innenfor grensene. Til skjemaer som krever et tall. */
 export function tilTallIOmraade(tekst: string, min: number, maks: number): number | null {
   const n = tilTall(tekst)

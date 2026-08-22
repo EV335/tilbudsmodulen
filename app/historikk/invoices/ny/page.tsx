@@ -85,6 +85,16 @@ function NyFakturaInnhold() {
       return
     }
 
+    // Beloepet vaktes her og ikke av nettleseren. Feltet hadde min="1", men
+    // det var HTML-validering som fulgte type="number" — og den er borte naa
+    // som feltet tar imot norsk komma (se lib/tall.ts). Serveren avviser
+    // fortsatt tullbeloep, men en 400 er darligere enn a si fra med en gang.
+    const belop = tilbudId ? undefined : tilTall(manueltBelop)
+    if (belop !== undefined && (belop === null || belop <= 0)) {
+      setFeilmelding('Skriv inn et beløp større enn null.')
+      return
+    }
+
     setStatus2('oppretter')
     setFeilmelding(null)
     try {
@@ -94,7 +104,7 @@ function NyFakturaInnhold() {
         body: JSON.stringify({
           customerId,
           tilbudId: tilbudId || undefined,
-          amount: tilbudId ? undefined : (tilTall(manueltBelop) ?? 0),
+          amount: belop ?? undefined,
           dueDate: dueDate || undefined,
           mvaInkludert,
         }),
