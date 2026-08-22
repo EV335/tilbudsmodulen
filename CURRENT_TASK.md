@@ -1724,6 +1724,87 @@ som står på lista uten å måtte gjette.
 **Ikke verifisert:** en ekte betalingslenke ende-til-ende. Det krever en faktura
 med token, altså innlogging i produksjon.
 
+### 38. Bug-runde i etterkalkylen — fem funn — 2026-08-21
+
+Systematisk gjennomgang av etterkalkylen, som var det eneste i appen som aldri
+hadde vært gjennom en. Migrasjonen og API-rutene holdt: RLS på uten
+anon-policyer, idempotent, sluttkontroll som feiler høyt, og en eierskapssjekk
+i `POST` som forklarer hvorfor den ikke bare er tilgangskontroll. Feilene lå i
+regnestykket og i grensesnittet.
+
+**1. Material uten timer forsvant helt.** `samleErfaring` bygde oversikten av
+timefordelingen alene, så en operasjon der brukeren tar betalt for material men
+ikke timer ble samlet opp i materialsamlingen og aldri lest. I testtilfellet sto
+den for 5000 av 5200 kr estimert material og 17 308 kr faktisk — og viste
+ingenting. Dette var andre halvdel av bugen fra punkt 35: linja overlevde inn i
+øyeblikksbildet, men kom ikke gjennom oversikten. Bygges nå på unionen av timer
+og material.
+
+**2. Feil ble svelget som tomt resultat.** `hentEtterkalkyler` fanget alle feil
+og returnerte tom liste, selv om kommentaren bare lovet det for manglende
+tabell. En forbigående databasefeil så dermed nøyaktig ut som «ingen jobber
+registrert ennå», og satsforslagene forsvant uten et ord. Bare `42P01` svelges
+nå — samme mønster som fila allerede brukte i sine to andre funksjoner.
+
+**3. Håndkopi som hadde drevet.** Siden hadde sin egen kopi av
+`linjerFraResultat` som fortsatt kastet linjer uten timer, mens serveren nå
+beholder dem. Kommentaren lovet at det var samme funksjon. Flyttet til
+`lib/etterkalkyle.ts` — ren regning uten database — så siden bruker originalen,
+og filteret kan endelig testes. Det var utestbart nettopp fordi det lå i
+DB-modulen.
+
+**4 og 5 — mine egne følgefeil.** Fiks 1 gjorde en tilstand nåbar som UI-et
+aldri hadde møtt. For en operasjon uten timer sto det bokstavelig «Timene dine
+sier 0 t per enhet — 0 % mot satsen din på 0,15» og «0 jobber · alle med bare
+denne operasjonen». Alt usant. Og bunnhintet voktet på timesiden alene, så en
+operasjon med fem førte materialjobber og lite avvik fikk beskjeden «Ingen
+justering foreslås før 3 jobber er ført» — jobbene fantes, det var avviket som
+var lite.
+
+Commits `df04fc5` og `6fcdf00`.
+
+### 39. «7,5» var ikke et tall i et norsk grensesnitt — 2026-08-21
+
+Alle elleve tallfelt i appen brukte `type="number"`. Da er det **nettleserens**
+språkinnstilling, ikke appens, som avgjør om komma er et gyldig desimalskille.
+Med engelskspråklig nettleser tømmer nettleseren feltverdien i det brukeren
+skriver komma: han ser `7,5` stå i feltet, mens React har fått tom streng og
+lagre-knappen er deaktivert uten et ord om hvorfor.
+
+Dette er samme familie som bug 1 i punkt 32, men motsatt vei — der gjaldt det
+hardt mellomrom ut av appen, her komma inn i den.
+
+Felt og tolker hører sammen, så de ligger nå ett sted hver:
+- `components/ui/TallInput.tsx` — `type="text"` med `inputMode="decimal"`, som
+  gir talltastatur på mobil. Det eneste som går tapt er piltastene, som ingen av
+  disse feltene har bruk for. Typen forbyr `min`/`max`/`step`, slik at ingen tror
+  nettleseren validerer lenger.
+- `lib/tall.ts` — `tilTall()` tar komma og punktum, mellomrom som tusenskille
+  (også det harde fra `toLocaleString`, så et tall kopiert ut av appen kan limes
+  rett inn igjen), og avviser tvetydige tall som `1,234,5` i stedet for å gjette.
+
+De to API-rutene hadde hver sin kopi av `lesTall`. Begge bruker nå den delte,
+som også tåler komma — klienten sender videre det brukeren skrev.
+
+**To ting migreringen avdekket.** Betalingsfristen brukte `Number(x) || 14`, der
+0 ble til 14 fordi 0 er falsy; grensen `min="1"` lå i HTML-en og falt bort med
+`type="number"`, så den står nå i koden. Og etterkalkylen sendte rå tekst til
+serveren og voktet lagre-knappen på om feltet hadde tegn i seg — den sender nå
+tolket tall, og knappen vokter på om tallet lar seg tolke.
+
+**Verifisert i ekte nettleser**, innlogget mot dev-server med ekte tastetrykk:
+feltene holder «812,50» og «45,5», forhåndsvisningen viser kr 9 825, og
+`beregnTilbud` gir 9825 for de samme tallene. Kommaet tolkes som desimal, ikke
+noe annet. Testserveren fikk sin egen `NEXTAUTH_SECRET`, så tokenet som ble
+mintet er verdiløst andre steder.
+
+**16 nye tester, 83 totalt.** Commit `b93a4b1`.
+
+**Alle fire deployene fra 2026-08-21 er READY**, og produksjonen står på
+`b93a4b1`. Verifisert utenfra: forsiden 200, `/calc` 307, API-ene 401, ukjent
+fakturatoken 404, og tilgangslista svarer fortsatt `AccessDenied`.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
