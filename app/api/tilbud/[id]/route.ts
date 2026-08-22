@@ -42,6 +42,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     const oppdatert = await oppdaterTilbud(session.user.id, params.id, body.input, body.resultat)
+    if (!oppdatert) {
+      return NextResponse.json({ error: 'Fant ikke tilbudet.' }, { status: 404 })
+    }
     return NextResponse.json(oppdatert)
   } catch (err) {
     console.error('Feil i PATCH /api/tilbud/[id]:', err)

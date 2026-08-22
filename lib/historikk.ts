@@ -87,7 +87,10 @@ export async function oppdaterTilbud(
   id: string,
   input: TilbudInput,
   resultat: TilbudResult
-): Promise<LagretTilbud> {
+): Promise<LagretTilbud | null> {
+  // Samme vakt som hentTilbud. Uten den ga en feilformet id «invalid input
+  // syntax for type uuid» og ble til 500.
+  if (!erUuid(id)) return null
   const { data, error } = await supabase
     .from('tilbud')
     .update({
@@ -98,16 +101,21 @@ export async function oppdaterTilbud(
     .eq('id', id)
     .eq('user_id', userId)
     .select('id, created_at, data')
-    .single()
+    .maybeSingle()
 
   if (error) {
     throw new Error(`Klarte ikke å oppdatere tilbud: ${error.message}`)
   }
 
+  // Fantes ikke raden — eller tilhører den en annen bruker — er det «fant ikke»,
+  // ikke en serverfeil. Med .single() kastet dette, og ruta gjorde det om til
+  // 500 der 404 er riktig svar. Kunde-ruta har alltid gjort det slik.
+  if (!data) return null
   return radTilLagretTilbud(data as TilbudRad)
 }
 
 export async function slettTilbud(userId: string, id: string): Promise<void> {
+  if (!erUuid(id)) return
   const { error } = await supabase.from('tilbud').delete().eq('id', id).eq('user_id', userId)
 
   if (error) {
