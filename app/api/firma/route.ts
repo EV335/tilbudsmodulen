@@ -48,25 +48,56 @@ export async function POST(req: NextRequest) {
     let logoUrl: string | undefined
 
     if (body.logoDataUrl?.startsWith('data:')) {
-      const match = body.logoDataUrl.match(/^data:(.+);base64,(.+)$/)
-      if (match) {
-        const [, mimeType, base64] = match
-        const filtype = mimeType.split('/')[1] || 'png'
-        const filsti = `${session.user.id}/logo.${filtype}`
-        const buffer = Buffer.from(base64, 'base64')
-
-        const { error: uploadError } = await supabase.storage
-          .from('logos')
-          .upload(filsti, buffer, { contentType: mimeType, upsert: true })
-
-        if (uploadError) {
-          console.error('Feil ved opplasting av logo:', uploadError)
-          return NextResponse.json({ error: 'Klarte ikke å laste opp logo.' }, { status: 500 })
-        }
-
-        const { data: publicUrlData } = supabase.storage.from('logos').getPublicUrl(filsti)
-        logoUrl = publicUrlData.publicUrl
+      // Bare bildetypene vi faktisk viser, og filendelsen utledes av VAR liste
+      // — ikke av klientens mime-streng. Foer sto det
+      // `mimeType.split('/')[1]` rett inn i filstien, og regexen slapp gjennom
+      // hva som helst: «data:image/../../x;base64,» ga en filsti med .. i seg.
+      // Verre var contentType: bucketen er offentlig, saa en innlogget bruker
+      // kunne lastet opp text/html og faatt en offentlig URL som serverte det.
+      // SVG er utelatt med vilje — den kan inneholde script.
+      const TILLATTE: Record<string, string> = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/webp': 'webp',
       }
+      // 2 MB dekodet. En firmalogo er aldri i naerheten, og uten grensen leser
+      // vi hele kroppen inn i minnet foer noen sier fra.
+      const MAKS_BYTES = 2 * 1024 * 1024
+
+      const match = body.logoDataUrl.match(/^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/)
+      if (!match) {
+        return NextResponse.json({ error: 'Logoen kunne ikke leses. Last opp en PNG, JPG eller WEBP.' }, { status: 400 })
+      }
+
+      const [, mimeType, base64] = match
+      const filtype = TILLATTE[mimeType]
+      if (!filtype) {
+        return NextResponse.json(
+          { error: 'Logoen må være PNG, JPG eller WEBP.' },
+          { status: 400 }
+        )
+      }
+
+      const buffer = Buffer.from(base64, 'base64')
+      if (buffer.byteLength > MAKS_BYTES) {
+        return NextResponse.json(
+          { error: 'Logoen er for stor. Maks 2 MB.' },
+          { status: 400 }
+        )
+      }
+
+      const filsti = `${session.user.id}/logo.${filtype}`
+      const { error: uploadError } = await supabase.storage
+        .from('logos')
+        .upload(filsti, buffer, { contentType: mimeType, upsert: true })
+
+      if (uploadError) {
+        console.error('Feil ved opplasting av logo:', uploadError)
+        return NextResponse.json({ error: 'Klarte ikke å laste opp logo.' }, { status: 500 })
+      }
+
+      const { data: publicUrlData } = supabase.storage.from('logos').getPublicUrl(filsti)
+      logoUrl = publicUrlData.publicUrl
     }
 
     const { data, error } = await supabase
@@ -78,7 +109,12 @@ export async function POST(req: NextRequest) {
           orgnr: body.orgnr || null,
           adresse: body.adresse || null,
           bankkonto: body.bankkonto || null,
-          betalingsbetingelser_dager: body.betalingsbetingelserDager ?? 14,
+          // Klampes ogsa her. Klienten vokter 1-365, men den vakten er borte i
+          // det noen kaller API-et direkte — og 0 dagers frist er ingen frist.
+          betalingsbetingelser_dager: Math.min(
+            Math.max(Math.round(Number(body.betalingsbetingelserDager) || 14), 1),
+            365
+          ),
           // 0 = ikke mva-registrert. Satsen er selve av/pa-bryteren, sa de to
           // kan ikke komme i utakt.
           mva_sats: Math.min(Math.max(Number(body.mvaSats) || 0, 0), 100),

@@ -117,6 +117,7 @@ export default function FakturaDetaljPage() {
       <InvoiceView
         faktura={faktura}
         ventPaBekreftelse={betalt && faktura.status !== 'paid' && !bekreftelseUtlopt}
+        bekreftelseGaUt={betalt && faktura.status !== 'paid' && bekreftelseUtlopt}
       />
     </Section>
   )

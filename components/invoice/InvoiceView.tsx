@@ -16,14 +16,22 @@ interface InvoiceViewProps {
   // markere fakturaen betalt. Skjuler betalingsseksjonen i mellomtiden, slik
   // at kunden ikke kan rekke å betale to ganger.
   ventPaBekreftelse?: boolean
+  // Satt naar pollingen ga opp uten at webhooken landet. Da skal
+  // betalingsseksjonen IKKE apne seg av seg selv — se kommentaren ved kanBetale.
+  bekreftelseGaUt?: boolean
 }
 
-export default function InvoiceView({ faktura: initial, ventPaBekreftelse = false }: InvoiceViewProps) {
+export default function InvoiceView({
+  faktura: initial,
+  ventPaBekreftelse = false,
+  bekreftelseGaUt = false,
+}: InvoiceViewProps) {
   const [faktura, setFaktura] = useState(initial)
   const [resendStatus, setResendStatus] = useState<'idle' | 'sender' | 'sendt' | 'feil'>('idle')
   const [resendFeil, setResendFeil] = useState<string | null>(null)
   const [lenkeKopiert, setLenkeKopiert] = useState(false)
   const [kansellerStatus, setKansellerStatus] = useState<'idle' | 'kansellerer' | 'feil'>('idle')
+  const [betalLikevel, setBetalLikevel] = useState(false)
 
   function kopierBetalingslenke() {
     const lenke = `${window.location.origin}/betal/${faktura.public_token}`
@@ -70,7 +78,11 @@ export default function InvoiceView({ faktura: initial, ventPaBekreftelse = fals
   }
 
   const belop = fakturaBelop(faktura)
-  const kanBetale = kanBetales(faktura.status) && !ventPaBekreftelse
+  // Ga bekreftelsen ut, skal ikke betalingsseksjonen dukke opp igjen av seg
+  // selv: da sto en invitasjon til a betale en gang til rett under linja som sa
+  // at betalingen var gjennomfort. Samme felle som pa kundens /betal/[token].
+  const kanBetale =
+    kanBetales(faktura.status) && !ventPaBekreftelse && (!bekreftelseGaUt || betalLikevel)
   // En betalt faktura krediteres/refunderes, den kanselleres ikke.
   const kanKanselleres = faktura.status !== 'paid' && faktura.status !== 'cancelled'
 
@@ -130,6 +142,21 @@ export default function InvoiceView({ faktura: initial, ventPaBekreftelse = fals
       {ventPaBekreftelse && (
         <Card padding="md">
           <p className="text-black/70">Bekrefter betalingen hos Stripe...</p>
+        </Card>
+      )}
+
+      {bekreftelseGaUt && !betalLikevel && (
+        <Card padding="md">
+          <p className="font-bold mb-2">Bekreftelsen har ikke landet ennå</p>
+          <p className="text-black/70 mb-4">
+            Betalingen er registrert hos Stripe, men webhooken har ikke oppdatert
+            statusen her. Det pleier å ordne seg i løpet av noen minutter.
+            <strong> Ikke ta betalt på nytt</strong> før du har sjekket i
+            Stripe-dashbordet — da risikerer du å belaste kunden to ganger.
+          </p>
+          <Button type="button" variant="link" onClick={() => setBetalLikevel(true)}>
+            Vis betaling likevel
+          </Button>
         </Card>
       )}
 
