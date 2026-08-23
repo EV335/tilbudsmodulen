@@ -35,7 +35,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: 'Mangler input eller resultat.' }, { status: 400 })
     }
 
-    const prisfeil = verifiserPris(body.input, body.resultat)
+    // Oppdatering: her kan tilbudet vaere eldre enn linjemodellen, og da finnes
+    // det ingen linjer a kontrollere prisen mot. Se verifiserPris.
+    const prisfeil = verifiserPris(body.input, body.resultat, { tillatUtenLinjer: true })
     if (prisfeil) {
       console.error('Avviste lagring av tilbud:', prisfeil)
       return NextResponse.json({ error: prisfeil }, { status: 400 })

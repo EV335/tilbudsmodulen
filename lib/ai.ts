@@ -134,8 +134,23 @@ Med vennlig hilsen`
  * Tilbud lagret før linjemodellen har ingen `linjer` og hoppes over; de kan ikke
  * etterregnes, og skal fortsatt kunne åpnes og lagres.
  */
-export function verifiserPris(input: TilbudInput, resultat: TilbudResult): string | null {
-  if (!input?.linjer?.length) return null
+export function verifiserPris(
+  input: TilbudInput,
+  resultat: TilbudResult,
+  { tillatUtenLinjer = false }: { tillatUtenLinjer?: boolean } = {}
+): string | null {
+  if (!input?.linjer?.length) {
+    // Gamle tilbud (fra før linjemodellen, august 2026) har ingen linjer, og
+    // skal fortsatt kunne åpnes, redigeres og lagres på nytt. Derfor unntaket —
+    // men det gjelder BARE oppdatering av et eksisterende tilbud.
+    //
+    // Et nytt tilbud kommer alltid fra kalkulatoren, og /api/calc avviser tomme
+    // linjer. Der er «ingen linjer» altså ikke gamle data, men en pris ingen har
+    // regnet ut — og da kontrollerte denne vakten ingenting i det hele tatt.
+    return tillatUtenLinjer
+      ? null
+      : 'Tilbudet mangler linjer, så prisen kan ikke kontrolleres.'
+  }
 
   const sum = beregnTilbud(input.jobbType, input.linjer, input.timepris, input.marginProsent)
 

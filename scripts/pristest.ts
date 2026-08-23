@@ -72,9 +72,17 @@ sjekk('riktig pris godtas ved lagring',
 sjekk('manipulert pris avvises ved lagring',
   verifiserPris(gyldigInput as never, { pris: 1 } as never) !== null)
 
-// 8) Gamle tilbud uten linjer skal fortsatt kunne lagres
-sjekk('gammelt tilbud uten linjer slipper gjennom',
-  verifiserPris({ jobbType: 'Maler', timepris: 750, linjer: [], romstorrelseM2: 60 } as never, { pris: 30667 } as never) === null)
+// 8) Gamle tilbud uten linjer skal fortsatt kunne REDIGERES — de er fra for
+//    linjemodellen og har ingenting a kontrollere prisen mot. Unntaket ligger
+//    pa PATCH-ruta, ikke i funksjonen, slik at det er synlig der det gjelder.
+const utenLinjer = { jobbType: 'Maler', timepris: 750, linjer: [], romstorrelseM2: 60 }
+sjekk('gammelt tilbud uten linjer kan oppdateres',
+  verifiserPris(utenLinjer as never, { pris: 30667 } as never, { tillatUtenLinjer: true }) === null)
+
+// ...men et NYTT tilbud uten linjer er ikke gamle data. Det er en pris ingen
+// har regnet ut, og for denne endringen slapp den rett gjennom vakten.
+sjekk('nytt tilbud uten linjer avvises',
+  verifiserPris(utenLinjer as never, { pris: 999999 } as never) !== null)
 
 // 9) PDF-tekst: tankestrek overlever
 sjekk('tankestrek blir bindestrek i PDF-tekst',
@@ -454,6 +462,6 @@ process.env.APP_URL = 'https://eksempel.no'
 sjekk('adresse uten skraastrek er urort', appUrl() === 'https://eksempel.no')
 delete process.env.APP_URL
 
-const ANTALL = 94
+const ANTALL = 95
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)
