@@ -1936,6 +1936,72 @@ ikke lenger kode å lete i, men de tre klikketestene og beslutningen om Stripe
 Connect.
 
 
+### 43. Sjette og sjuende runde — kodebasen er gjennomgått i sin helhet — 2026-08-23
+
+**Sjette runde — to funn.**
+
+*En databasefeil kunne prise tilbudet med bokens satser, i stillhet.*
+`hentPrissatser` svelget alle feil og falt tilbake på standardsatsene, med en
+kommentar som bare lovet det for manglende tabell. Nøyaktig samme form som
+`hentEtterkalkyler` hadde (punkt 38) — men verre konsekvens: en forbigående
+databasefeil ga et tilbud priset med bokens satser i stedet for håndverkerens
+egne, uten at noe sa fra, og han ville sendt det til kunden. Bare `42P01`
+svelges nå.
+
+*`appUrl()` fjernet ikke skråstrek til slutt.* Kallerne setter selv på stien, så
+en `APP_URL` som slutter på `/` ga doble skråstreker i hver eneste
+betalingslenke i faktura-PDF og e-post. Verdien satt i punkt 37 har ingen, men
+neste person som setter den vet ikke det.
+
+**Autentiseringsadapteren gikk gjennom uten funn** — runden med høyest innsats.
+`useVerificationToken` bruker `DELETE … RETURNING`, som er atomisk, så en magic
+link kan bare brukes én gang selv ved to samtidige forsøk. Case-følsomheten var
+verdt å sjekke gitt at `Maleren.young@gmail.com` nettopp ble lagt inn med stor
+M: `.eq('email', …)` **er** case-sensitiv i Postgres, men next-auth normaliserer
+selv med `toLowerCase()` i `signin.js:61`, før både adapteren og
+`signIn`-callbacken. Store og små bokstaver treffer altså samme brukerrad.
+Sesjonsmetodene i adapteren er død kode, siden appen kjører `strategy: 'jwt'`.
+
+**Sjuende runde — ett funn.** `verifiserPris` åpnet med
+`if (!input?.linjer?.length) return null`. Tomme linjer ga «ingen feil», og
+prisen klienten påsto ble lagret ukontrollert — mens ÉN linje med antall 0 ble
+filtrert bort og avvist med «Tilbudet har ingen gyldige linjer». Samme
+situasjon, motsatt utfall, inne i samme funksjon.
+
+Unntaket var bevisst og testdekket: gamle tilbud fra før linjemodellen har
+ingen linjer og skal fortsatt kunne redigeres. Det er legitimt og ble beholdt —
+men det gjaldt begge rutene. Et nytt tilbud kommer alltid fra kalkulatoren, og
+`/api/calc` avviser tomme linjer med 400. Unntaket ligger nå på PATCH-ruta som
+en synlig parameter, ikke skjult i funksjonen.
+
+**Uten funn:** `beregnLinje` er vaktet mot Infinity, negative satser, margin
+over 100 og timepris under null, med en kommentar per vakt om hvilken ekte bug
+den kom av. `tilPdfTekst` brukes av `skriv()` og `skrivBrutt()` internt, så hver
+kaller i faktura-PDF-en får den automatisk — motsatt av `erUuid`-gapet i punkt
+41, og den riktige plasseringen.
+
+Commits `08c7569` og `40bcf75`. 95 tester, tsc rent, bygg grønt.
+
+---
+
+## Gjennomgangen er ferdig: sytten funn over sju runder
+
+Kodebasen er nå dekket i sin helhet. Utbyttet falt jevnt — fem funn i første
+runde, ett i hver av de tre siste. Det er signalet: nye feilFORMER dukket ikke
+lenger opp, bare flere eksemplarer av de samme.
+
+**Én linse forklarte nesten alt: par som kom i utakt.** En lærdom anvendt ett
+sted og ikke det andre. Generisk feiltekst i de offentlige rutene, ikke i de
+innloggede. Idempotency-fellen dokumentert for tidsavbrudd, ikke rettet i
+rekkefølgen under. Dobbeltbetaling varslet i webhooken, men invitert til i
+grensesnittet. `erUuid` i de nye rutene, ikke i de gamle. To av parene var mine
+egne, fra samme dag.
+
+**Praktisk lærdom for neste runde:** let etter to steder som skal si det samme,
+ikke etter slurv. Det finnes lite slurv i denne koden — den er gjennomtenkt der
+noen har tenkt. Feilene ligger i overgangene.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
