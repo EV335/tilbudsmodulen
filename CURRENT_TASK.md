@@ -2002,6 +2002,56 @@ ikke etter slurv. Det finnes lite slurv i denne koden — den er gjennomtenkt de
 noen har tenkt. Feilene ligger i overgangene.
 
 
+### 44. Fagene fikk sine egne ord — 2026-08-23
+
+Innvending fra bruker: grensesnittet ser likt ut for alle fag, men en maler og
+en bilpleier gjør ikke samme tjeneste og måler ikke pris etter samme krav.
+
+**Han hadde rett, og det stakk lenger enn skjemaet.** `ENHETSTEKST` er ETT ord
+per enhet, og enheten `stk` gjorde fire uforenlige jobber: én bil, ett bad, ett
+sikringsskap, ett toalett. Ordet følger med helt ut i **tilbudet kunden leser**,
+via `beregnLinje` → `ResultCard` → `lib/ai.ts` → PDF.
+
+| Faget | Kunden fikk | Kunden får nå |
+|---|---|---|
+| Bilpleie | «Polering — 3 **stk**», «4 500 kr per **stk**» | «3 **biler**», «per **bil**» |
+| Rørlegger | «Komplett bad — 1 **stk**» | «1 **bad**» |
+| Rørlegger | «Bytte toalett — 3 **stk**» | «3 **toaletter**» |
+| Elektriker | «Bytte sikringsskap — 1 **stk**» | «1 **sikringsskap**» |
+| Maler | «45 m² veggflate» | uendret |
+
+Hjelpetekstene forsøkte allerede å bøte på det — det sto bokstavelig «Antall =
+antall biler» og «Antall = antall bad» i koden. Men **en hjelpetekst kan ikke
+rette opp et ord som står i kundens dokument.**
+
+Ordet kommer nå fra operasjonen (`enhetEntall`/`enhetFlertall`), ikke fra
+enheten. Begge former, fordi norsk krever begge: «per bil» og «3 biler».
+Enheten er fortsatt riktig for utregningen og er urørt — ingen tall er endret.
+
+Endringen avdekket én til: enheten `time` hadde bare flertallsform, så
+timearbeid sto som «1 067 kr per **timer**». Løst på enhetsnivå
+(`ENHETSTEKST_ENTALL`), slik at enhver framtidig timebasert operasjon arver
+det.
+
+Alle sju fagene ble lest høyt gjennom hele løypa — skjema, forhåndsvisning,
+resultatkort og tilbudstekst. Maler, snekker og murer er uendret; de leste
+allerede riktig.
+
+Commit `ca3c506`. 99 tester, tsc rent, bygg grønt.
+
+**To ting ble bevisst ikke rørt, fordi de er fagbeslutninger og ikke kode:**
+
+1. **Bilpleie priser per bil, men bilens størrelse er selve prisvariabelen.**
+   `bil_polering` står på 6 timer flatt. En liten bil og en stor SUV er ikke
+   samme jobb. Hjelpeteksten oppfordrer nå til å justere i «Mine satser», men
+   riktig løsning er trolig egne operasjoner per størrelse.
+2. **Bilpleie har ingen markedsdata.** Begge operasjonene er `anslag`, så appen
+   varsler på hver linje. Å finne på timetall der ville vært å dikte — som er
+   nettopp det `anslag`-merket finnes for å hindre.
+
+Begge hører hjemme i samme samtale som de sju andre satsene under.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -2072,6 +2122,11 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
    innvendig rens. De gir varsel i appen. Spørsmålet til fagpersonen er **ikke**
    «hva bør dette koste», men «hvor lang tid bruker du på én enhet» — det er
    `timerPerEnhet` modellen regner ut fra. Se `docs/priser.md`.
+
+   **Bilpleie trenger mer enn en sats:** polering og innvendig rens prises per
+   bil, men bilens størrelse er prisvariabelen — 6 timer flatt gjelder ikke
+   både en småbil og en stor SUV. Spør om egne satser per størrelse, ikke bare
+   ett tall. Se punkt 44.
 7. ~~**Sett `ALLOWED_EMAILS` i Vercel**~~ — **gjort 2026-08-20**, se punkt 36.
    Malervennen lagt til 2026-08-22, se punkt 42.
    Verifisert utenfra mot den kjørende appen.
