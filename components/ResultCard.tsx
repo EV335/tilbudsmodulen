@@ -187,7 +187,7 @@ export default function ResultCard({ resultat, input, tilbudId }: ResultCardProp
                 </div>
                 <div className="text-sm text-black/50 mt-1">
                   {l.timer} t arbeid ({formatKr(l.arbeidKr)}) + materialer ({formatKr(l.materialKr)}) ={' '}
-                  {formatKr(l.prisPerEnhet)} per {l.enhetstekst}
+                  {formatKr(l.prisPerEnhet)} per {l.enhetstekstEntall}
                 </div>
                 {l.advarsel && (
                   <div className="mt-2 text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2">

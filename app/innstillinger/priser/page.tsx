@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { FAG, FAGNAVN, ENHETSTEKST, gjeldendeSats, beregnLinje, type Prissatser } from '@/lib/priser'
+import { FAG, FAGNAVN, enhetEntallFor, gjeldendeSats, beregnLinje, type Prissatser } from '@/lib/priser'
 import {
   harForslag,
   harMaterialforslag,
@@ -205,7 +205,7 @@ function OperasjonRad({
             {sats.erEndret && <span className="ml-2 text-sm font-normal text-gold">din sats</span>}
           </div>
           <div className="text-sm text-black/50">
-            per {ENHETSTEKST[op.enhet]}
+            per {enhetEntallFor(op)}
             {op.kilde === 'anslag' && ' · ikke markedsverifisert'}
           </div>
         </div>

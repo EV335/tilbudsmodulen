@@ -7,7 +7,7 @@
 // Ingen testrammeverk i prosjektet; dette er et vanlig skript med exit-kode,
 // slik at det kan kjøres i CI senere uten å dra inn Jest eller Vitest.
 
-import { beregnTilbud, beregnLinje } from '@/lib/priser'
+import { beregnTilbud, beregnLinje, FAG, enhetEntallFor, enhetFlertallFor } from '@/lib/priser'
 import { verifiserPris, tekstNevnerPrisen } from '@/lib/ai'
 import { tilPdfTekst } from '@/lib/pdftekst'
 import { formatKr } from '@/lib/format'
@@ -462,6 +462,27 @@ process.env.APP_URL = 'https://eksempel.no'
 sjekk('adresse uten skraastrek er urort', appUrl() === 'https://eksempel.no')
 delete process.env.APP_URL
 
-const ANTALL = 95
+// 19) Enhetsordene. ENHETSTEKST er ETT ord per enhet, og «stk» gjorde fire
+//     uforenlige jobber: en bil, ett bad, ett sikringsskap, ett toalett. Ordet
+//     folger med helt ut i tilbudet kunden leser, saa en bilpleier sendte
+//     «Polering — 3 stk». Na kommer ordet fra operasjonen, i entall og
+//     flertall, fordi bade «per bil» og «3 biler» skal leses riktig.
+const bil = FAG.Bilpleie.operasjoner.find((o) => o.id === 'bil_polering')!
+sjekk('bilpleie teller biler, ikke stk',
+  enhetFlertallFor(bil) === 'biler' && enhetEntallFor(bil) === 'bil')
+const bad = FAG['Rørlegger'].operasjoner.find((o) => o.id === 'ror_bad')!
+sjekk('rørleggeren teller bad, ikke stk', enhetFlertallFor(bad) === 'bad')
+
+// «3 timer» er riktig, «1 067 kr per timer» er det ikke.
+const timer = FAG.Annet.operasjoner.find((o) => o.id === 'annet_timer')!
+sjekk('timearbeid boyes riktig',
+  enhetFlertallFor(timer) === 'timer' && enhetEntallFor(timer) === 'time')
+
+// Fagene som allerede leste riktig skal vaere uendret.
+const veggOperasjon = FAG.Maler.operasjoner.find((o) => o.id === 'maler_vegg')!
+sjekk('maleren er urort',
+  enhetEntallFor(veggOperasjon) === 'm² veggflate' && enhetFlertallFor(veggOperasjon) === 'm² veggflate')
+
+const ANTALL = 99
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

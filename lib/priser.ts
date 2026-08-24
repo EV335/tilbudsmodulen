@@ -30,6 +30,13 @@ export const ENHETSTEKST: Record<Enhet, string> = {
   time: 'timer',
 }
 
+// Entallsformer for de enhetene der ENHETSTEKST er flertall. «3 timer» er
+// riktig, men «1 067 kr per timer» er det ikke. De ovrige enhetene leses likt
+// begge veier («per m² gulv», «3 m² gulv»), og star derfor ikke her.
+const ENHETSTEKST_ENTALL: Partial<Record<Enhet, string>> = {
+  time: 'time',
+}
+
 export interface Operasjon {
   id: string
   navn: string
@@ -43,6 +50,24 @@ export interface Operasjon {
   markedHoy?: number
   kilde: 'marked' | 'anslag'
   hjelpetekst?: string
+  /**
+   * Hva EN enhet heter for mennesker. Enheten `stk` gjør fire uforenlige
+   * jobber — én bil, ett bad, ett sikringsskap, ett toalett — og ordet følger
+   * med helt ut i tilbudet kunden leser. «Polering — 3 stk» er ikke et tilbud
+   * en bilpleier sender. Står feltene tomme, brukes ENHETSTEKST som før.
+   */
+  enhetEntall?: string
+  enhetFlertall?: string
+}
+
+/** «... kr per X» — entall. */
+export function enhetEntallFor(op: Operasjon): string {
+  return op.enhetEntall ?? ENHETSTEKST_ENTALL[op.enhet] ?? ENHETSTEKST[op.enhet]
+}
+
+/** «3 X» og «Antall (X)» — flertall. Faller tilbake pa entall der de er like. */
+export function enhetFlertallFor(op: Operasjon): string {
+  return op.enhetFlertall ?? op.enhetEntall ?? ENHETSTEKST[op.enhet]
 }
 
 export interface Fag {
@@ -179,6 +204,8 @@ export const FAG: Record<string, Fag> = {
         id: 'el_sikringsskap',
         navn: 'Bytte sikringsskap',
         enhet: 'stk',
+        enhetEntall: 'sikringsskap',
+        enhetFlertall: 'sikringsskap',
         timerPerEnhet: 8,
         materialPerEnhet: 8000,
         markedLav: 15000,
@@ -196,17 +223,21 @@ export const FAG: Record<string, Fag> = {
         id: 'ror_bad',
         navn: 'Komplett bad — rørleggerdelen',
         enhet: 'stk',
+        enhetEntall: 'bad',
+        enhetFlertall: 'bad',
         timerPerEnhet: 45,
         materialPerEnhet: 35000,
         markedLav: 65000,
         markedHoy: 125000,
         kilde: 'marked',
-        hjelpetekst: 'Rørleggerdelen av et standard bad på 5–7 m². Antall = antall bad.',
+        hjelpetekst: 'Rørleggerdelen av et standard bad på 5–7 m².',
       },
       {
         id: 'ror_wc',
         navn: 'Bytte toalett',
         enhet: 'stk',
+        enhetEntall: 'toalett',
+        enhetFlertall: 'toaletter',
         timerPerEnhet: 2,
         materialPerEnhet: 4000,
         kilde: 'anslag',
@@ -215,6 +246,8 @@ export const FAG: Record<string, Fag> = {
         id: 'ror_servant',
         navn: 'Bytte servant eller kran',
         enhet: 'stk',
+        enhetEntall: 'servant eller kran',
+        enhetFlertall: 'servanter og kraner',
         timerPerEnhet: 1.5,
         materialPerEnhet: 2500,
         kilde: 'anslag',
@@ -230,15 +263,19 @@ export const FAG: Record<string, Fag> = {
         id: 'bil_polering',
         navn: 'Polering og lakkforsegling',
         enhet: 'stk',
+        enhetEntall: 'bil',
+        enhetFlertall: 'biler',
         timerPerEnhet: 6,
         materialPerEnhet: 1200,
         kilde: 'anslag',
-        hjelpetekst: 'Antall = antall biler. Bilpleie måles ikke i m².',
+        hjelpetekst: 'Bilpleie måles per bil, ikke i m². Store biler tar lengre tid enn satsen tilsier — juster timene i Mine satser.',
       },
       {
         id: 'bil_innvendig',
         navn: 'Innvendig rens',
         enhet: 'stk',
+        enhetEntall: 'bil',
+        enhetFlertall: 'biler',
         timerPerEnhet: 3,
         materialPerEnhet: 400,
         kilde: 'anslag',
@@ -321,7 +358,10 @@ export interface BeregnetLinje {
   operasjonId: string
   navn: string
   enhet: Enhet
+  /** Flertall — til «3 biler». */
   enhetstekst: string
+  /** Entall — til «4 500 kr per bil». To felter fordi norsk krever det. */
+  enhetstekstEntall: string
   antall: number
   timerPerEnhet: number
   timer: number
@@ -374,9 +414,9 @@ export function beregnLinje(
   let advarsel: string | undefined
   if (op.markedLav && op.markedHoy) {
     if (prisPerEnhet > op.markedHoy) {
-      advarsel = `${prisPerEnhet} kr per ${ENHETSTEKST[op.enhet]} ligger over markedet (${op.markedLav}–${op.markedHoy} kr). Kunden vil trolig finne det billigere.`
+      advarsel = `${prisPerEnhet} kr per ${enhetEntallFor(op)} ligger over markedet (${op.markedLav}–${op.markedHoy} kr). Kunden vil trolig finne det billigere.`
     } else if (prisPerEnhet < op.markedLav) {
-      advarsel = `${prisPerEnhet} kr per ${ENHETSTEKST[op.enhet]} ligger under markedet (${op.markedLav}–${op.markedHoy} kr). Sjekk at du ikke taper penger.`
+      advarsel = `${prisPerEnhet} kr per ${enhetEntallFor(op)} ligger under markedet (${op.markedLav}–${op.markedHoy} kr). Sjekk at du ikke taper penger.`
     }
   } else if (op.kilde === 'anslag') {
     advarsel = 'Satsen for denne operasjonen er et anslag, ikke et markedstall. Kontroller den mot din egen erfaring.'
@@ -386,7 +426,8 @@ export function beregnLinje(
     operasjonId: op.id,
     navn: op.navn,
     enhet: op.enhet,
-    enhetstekst: ENHETSTEKST[op.enhet],
+    enhetstekst: enhetFlertallFor(op),
+    enhetstekstEntall: enhetEntallFor(op),
     antall: linje.antall,
     timerPerEnhet,
     timer,
@@ -451,7 +492,7 @@ export function omfangTekst(jobbType: string, linjer?: TilbudLinjeInput[], romst
     return linjer
       .map((l) => {
         const op = hentOperasjon(jobbType, l.operasjonId)
-        return op ? `${l.antall} ${ENHETSTEKST[op.enhet]}` : `${l.antall}`
+        return op ? `${l.antall} ${enhetFlertallFor(op)}` : `${l.antall}`
       })
       .join(' + ')
   }

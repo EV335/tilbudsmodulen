@@ -10,7 +10,8 @@ import {
   beregnTilbud,
   marginSomPaaslag,
   gjeldendeSats,
-  ENHETSTEKST,
+  enhetEntallFor,
+  enhetFlertallFor,
   type Prissatser,
 } from '@/lib/priser'
 import { tilTall, tilFeltTekst } from '@/lib/tall'
@@ -66,7 +67,7 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
   const fag = hentFag(jobbType)
   const operasjonOptions = fag.operasjoner.map((o) => ({
     value: o.id,
-    label: `${o.navn} (per ${ENHETSTEKST[o.enhet]})`,
+    label: `${o.navn} (per ${enhetEntallFor(o)})`,
   }))
 
   // Satsen sendes med hver linje som et øyeblikksbilde, slik at tilbudet kan
@@ -202,7 +203,7 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <TallInput
                   id={`antall-${i}`}
-                  label={`Antall (${op ? ENHETSTEKST[op.enhet] : ''})`}
+                  label={`Antall (${op ? enhetFlertallFor(op) : ''})`}
                   value={linje.antall}
                   onChange={(e) => endreLinje(i, { antall: e.target.value })}
                   placeholder="f.eks. 45"
@@ -235,7 +236,7 @@ export default function InputForm({ onSubmit, loading, error, satser }: InputFor
               {l.navn}: {l.antall} {l.enhetstekst} × {l.timerPerEnhet} t = {l.timer} t × {(tilTall(timepris) ?? 0).toLocaleString('nb-NO')} kr
               {' + '}
               {l.materialKr.toLocaleString('nb-NO')} kr materialer → <strong>{l.prisKr.toLocaleString('nb-NO')} kr</strong>
-              {' '}({l.prisPerEnhet.toLocaleString('nb-NO')} kr per {l.enhetstekst})
+              {' '}({l.prisPerEnhet.toLocaleString('nb-NO')} kr per {l.enhetstekstEntall})
             </p>
           ))}
           <p className="text-sm text-slate-700 pt-2 border-t border-slate-300">

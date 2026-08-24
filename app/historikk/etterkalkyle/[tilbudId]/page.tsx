@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { LagretTilbud } from '@/lib/historikk'
 import { avvikProsent, fordelTimer, linjerFraResultat, type EtterkalkyleLinje } from '@/lib/etterkalkyle'
-import { ENHETSTEKST, finnOperasjon, omfangTekst } from '@/lib/priser'
+import { enhetFlertallFor, finnOperasjon, omfangTekst } from '@/lib/priser'
 import { formatKr, formatDato } from '@/lib/format'
 import { tilTall, tilFeltTekst } from '@/lib/tall'
 import Section from '@/components/ui/Section'
@@ -243,7 +243,7 @@ export default function EtterkalkylePage({ params }: { params: { tilbudId: strin
                     <span>{op?.navn ?? l.operasjonId}</span>
                     <span className="tabular-nums shrink-0">
                       {l.faktiskTimer.toLocaleString('nb-NO', { maximumFractionDigits: 1 })} t /{' '}
-                      {l.antall.toLocaleString('nb-NO')} {op ? ENHETSTEKST[op.enhet] : ''}
+                      {l.antall.toLocaleString('nb-NO')} {op ? enhetFlertallFor(op) : ''}
                     </span>
                   </li>
                 )
