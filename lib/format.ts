@@ -33,3 +33,23 @@ export function formatDatoTid(iso: string): string {
     minute: '2-digit',
   })
 }
+
+// Månedsnøkkel for gruppering: 'YYYY-MM', som sorterer riktig som ren tekst.
+//
+// Regnes av LOKAL tid, ikke UTC. Et tilbud lagret 31. august kl. 23:30 norsk
+// tid har tidsstempelet 21:30Z — men det er en augustjobb for den som laget
+// det, og en septemberjobb bare for en klokke i London. Resten av fila viser
+// også lokal tid (`toLocaleDateString`), så et UTC-basert bøttevalg ville gitt
+// en rad merket «sep. 2026» med en dato «31.08.2026» ved siden av.
+export function maanedNokkel(verdi: string | Date): string | null {
+  const d = verdi instanceof Date ? verdi : new Date(verdi)
+  if (Number.isNaN(d.getTime())) return null
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+/** 'aug. 2026' fra nøkkelen over. */
+export function formatMaaned(maaned: string): string {
+  const [aar, mnd] = maaned.split('-').map(Number)
+  if (!Number.isFinite(aar) || !Number.isFinite(mnd) || mnd < 1 || mnd > 12) return maaned
+  return new Date(aar, mnd - 1, 1).toLocaleDateString('nb-NO', { month: 'short', year: 'numeric' })
+}

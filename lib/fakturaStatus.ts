@@ -44,3 +44,32 @@ export const FAKTURA_STATUS_OPTIONS: { value: FakturaStatus | ''; label: string 
   { value: 'failed', label: 'Betaling feilet' },
   { value: 'cancelled', label: 'Kansellert' },
 ]
+
+/**
+ * Er fakturaen forfalt — altså sendt, ubetalt, og forfallsdagen er passert?
+ *
+ * Bor her sammen med `kanBetales` og ikke i oversikten som først trengte den:
+ * i det øyeblikket fakturalista også skal merke forfalte rader, må de to være
+ * enige. To definisjoner av «forfalt» er samme felle som resten av kodebasen
+ * har gått i før — et par som kommer i utakt.
+ *
+ * `iDag` kan sendes inn, både for testene og fordi en dato uten et tidspunkt
+ * bare gir mening målt mot en annen dato.
+ */
+export function erForfalt(
+  faktura: { status: FakturaStatus; due_date: string | null },
+  iDag: Date = new Date()
+): boolean {
+  if (!kanBetales(faktura.status) || !faktura.due_date) return false
+
+  // Forfall er en DATO, ikke et tidspunkt, og datoen leses ut i deler i stedet
+  // for med `new Date(due_date)`. Den formen tolkes som midnatt UTC, som i en
+  // tidssone bak UTC lander på kvelden dagen før — og da ville appen meldt
+  // «forfalt» om en faktura som forfaller i dag.
+  const [aar, mnd, dag] = faktura.due_date.slice(0, 10).split('-').map(Number)
+  if (!Number.isFinite(aar) || !Number.isFinite(mnd) || !Number.isFinite(dag)) return false
+
+  const forfall = new Date(aar, mnd - 1, dag)
+  const dagensDato = new Date(iDag.getFullYear(), iDag.getMonth(), iDag.getDate())
+  return forfall.getTime() < dagensDato.getTime()
+}

@@ -8,6 +8,7 @@
 // serveren, skjemaet i nettleseren og testene bruker nøyaktig samme tall.
 
 import { BeregnetLinje, Operasjon, Prissatser, finnOperasjon, gjeldendeSats } from '@/lib/priser'
+import { maanedNokkel } from '@/lib/format'
 
 /**
  * Øyeblikksbilde av tilbudets linjer, tatt da timene ble registrert.
@@ -349,4 +350,185 @@ export function harMaterialforslag(erfaring: Erfaring): boolean {
 // enn det er en presisjon tallet ikke har dekning for.
 function rundTre(n: number): number {
   return Math.round(n * 1000) / 1000
+}
+
+// ---------------------------------------------------------------------------
+// Treffsikkerhet over tid — «traff du bedre i august enn i juni?»
+// ---------------------------------------------------------------------------
+
+/**
+ * Én registrert jobb, redusert til det utviklingen trenger.
+ *
+ * `dato` er når ESTIMATET ble laget, ikke når timene ble ført. Spørsmålet
+ * handler om estimatene, og et tilbud skrevet i juni som først fikk timene
+ * sine ført i august er fortsatt et juni-estimat. Bøttet vi på
+ * registreringsdatoen, ville en opprydding der fem gamle jobber føres samme
+ * kveld sett ut som én forferdelig måned — og alle månedene de faktisk hørte
+ * til stått tomme.
+ */
+export interface TreffPunkt {
+  dato: string
+  estimerteTimer: number
+  faktiskeTimer: number
+}
+
+export interface TreffMaaned {
+  /** 'YYYY-MM'. */
+  maaned: string
+  jobber: number
+  sumEstimerteTimer: number
+  sumFaktiskeTimer: number
+  /**
+   * Typisk bom: medianen av |avvik| for jobbene i måneden.
+   *
+   * Median og ikke snitt, fordi én jobb som gikk fullstendig galt (+400 %)
+   * ellers ville svelget en måned med fem gode estimater. Da måler tallet
+   * uhellet, ikke treffsikkerheten.
+   */
+  typiskBom: number
+  /**
+   * Snittavviket MED fortegn. Står det positivt måned etter måned,
+   * underestimerer du systematisk — en annen beskjed enn «du bommer», og en
+   * handlingsbar en: satsene skal opp.
+   *
+   * Prosent er asymmetrisk (dobbelt så lang tid er +100 %, halvparten er
+   * −50 %), så tallet lener naturlig positivt. Det er likevel `avvikProsent`
+   * som brukes, den samme som står på hver enkelt jobb i historikken. To ulike
+   * mål på samme bom ville vært verre enn ett skjevt: brukeren ville sett to
+   * tall om samme jobb som ikke stemte overens.
+   */
+  snittAvvik: number
+}
+
+interface Maanedsbotte {
+  avvik: number[]
+  estimert: number
+  faktisk: number
+}
+
+function grupperPerMaaned(punkter: TreffPunkt[]): Map<string, Maanedsbotte> {
+  const grupper = new Map<string, Maanedsbotte>()
+
+  for (const punkt of punkter) {
+    // Jobber uten et brukbart estimat (gamle tilbud der timetallet er 0) faller
+    // ut. De har ingen bom å måle — ikke en bom på null.
+    const avvik = avvikProsent(punkt.faktiskeTimer, punkt.estimerteTimer)
+    if (avvik === null) continue
+
+    const nokkel = maanedNokkel(punkt.dato)
+    if (nokkel === null) continue
+
+    const botte = grupper.get(nokkel) ?? { avvik: [], estimert: 0, faktisk: 0 }
+    botte.avvik.push(avvik)
+    botte.estimert += punkt.estimerteTimer
+    botte.faktisk += punkt.faktiskeTimer
+    grupper.set(nokkel, botte)
+  }
+
+  return grupper
+}
+
+/** Én rad per måned det finnes førte timer for, eldste først. */
+export function treffPerMaaned(punkter: TreffPunkt[]): TreffMaaned[] {
+  return [...grupperPerMaaned(punkter).entries()]
+    .map(([maaned, botte]) => ({
+      maaned,
+      jobber: botte.avvik.length,
+      sumEstimerteTimer: rundTre(botte.estimert),
+      sumFaktiskeTimer: rundTre(botte.faktisk),
+      typiskBom: median(botte.avvik.map((a) => Math.abs(a))),
+      snittAvvik: Math.round(botte.avvik.reduce((sum, a) => sum + a, 0) / botte.avvik.length),
+    }))
+    .sort((a, b) => a.maaned.localeCompare(b.maaned))
+}
+
+export interface TreffUtvikling {
+  nyereBom: number
+  eldreBom: number
+  /** Positivt = bommen har krympet. */
+  forbedring: number
+  nyereJobber: number
+  eldreJobber: number
+  nyereMaaneder: string[]
+  eldreMaaneder: string[]
+}
+
+/**
+ * Under dette er «du har blitt bedre» en påstand tallene ikke bærer.
+ *
+ * Målt i PROSENTPOENG av den typiske bommen, ikke i prosent: går bommen fra
+ * 30 % til 24 %, er forbedringen 6 poeng. Lavere enn `MIN_AVVIK_PROSENT`,
+ * fordi dette er en median over flere jobber og ikke ett enkelt avvik — den
+ * tåler en mindre bevegelse før den betyr noe.
+ */
+export const MIN_FORBEDRING_PROSENTPOENG = 5
+
+/** Så mange måneder regnes som «nå», når det finnes nok historikk bak dem. */
+export const NYERE_VINDU_MAANEDER = 3
+
+/**
+ * Hvor mange måneder som utgjør «nå» i sammenligningen.
+ *
+ * Aldri mer enn halvparten av det som finnes: et fast vindu på tre måneder
+ * ville krevd fire måneders historikk før appen turte å si noe som helst, og
+ * appen er yngre enn det. Med to måneder blir det én mot én, med fire blir det
+ * to mot to, og med et år blir det de tre siste mot de ni før dem — som er
+ * riktig, for da er «nå» faktisk nå og ikke et halvår tilbake.
+ */
+function nyereVindu(antallMaaneder: number): number {
+  return Math.min(NYERE_VINDU_MAANEDER, Math.floor(antallMaaneder / 2))
+}
+
+/**
+ * Sammenligner de siste månedene med alle de foregående.
+ *
+ * Månedene telles som MÅNEDER MED JOBBER, ikke kalendermåneder. En håndverker
+ * som ikke fører timer i juli skal ikke miste sammenligningen sin av den grunn.
+ *
+ * Jobbterskelen er den samme som for satsforslag, og av samme grunn: under tre
+ * jobber på hver side er forskjellen tilfeldigheter. En app som sier «du har
+ * blitt bedre» på grunnlag av to jobber lærer brukeren å ikke tro på den —
+ * og da er også de forslagene som faktisk holder, tapt.
+ *
+ * Medianene regnes over JOBBENE i hver gruppe, ikke som et snitt av månedenes
+ * medianer. En median av medianer ville latt en måned med én jobb telle like
+ * tungt som en måned med ti.
+ */
+export function treffUtvikling(punkter: TreffPunkt[], vindu?: number): TreffUtvikling | null {
+  const grupper = grupperPerMaaned(punkter)
+  const maaneder = [...grupper.keys()].sort()
+  if (maaneder.length < 2) return null
+
+  const bredde = vindu ?? nyereVindu(maaneder.length)
+  if (bredde < 1) return null
+
+  const nyereMaaneder = maaneder.slice(-bredde)
+  const eldreMaaneder = maaneder.slice(0, -bredde)
+  if (eldreMaaneder.length === 0) return null
+
+  const nyere = nyereMaaneder.flatMap((m) => grupper.get(m)?.avvik ?? [])
+  const eldre = eldreMaaneder.flatMap((m) => grupper.get(m)?.avvik ?? [])
+  if (nyere.length < MIN_JOBBER_FOR_FORSLAG || eldre.length < MIN_JOBBER_FOR_FORSLAG) return null
+
+  const nyereBom = median(nyere.map((a) => Math.abs(a)))
+  const eldreBom = median(eldre.map((a) => Math.abs(a)))
+
+  return {
+    nyereBom,
+    eldreBom,
+    forbedring: eldreBom - nyereBom,
+    nyereJobber: nyere.length,
+    eldreJobber: eldre.length,
+    nyereMaaneder,
+    eldreMaaneder,
+  }
+}
+
+function median(tall: number[]): number {
+  if (tall.length === 0) return 0
+  const sortert = [...tall].sort((a, b) => a - b)
+  const midt = Math.floor(sortert.length / 2)
+  return sortert.length % 2 === 1
+    ? sortert[midt]
+    : Math.round((sortert[midt - 1] + sortert[midt]) / 2)
 }

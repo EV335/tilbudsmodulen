@@ -8,6 +8,7 @@ import { LagretTilbud } from '@/lib/historikk'
 import { avvikProsent, sumEstimerteTimer, type Etterkalkyle } from '@/lib/etterkalkyle'
 import { formatKr, formatDatoTid } from '@/lib/format'
 import { omfangTekst } from '@/lib/priser'
+import { leggTilbudIOkt } from '@/lib/tilbudsokt'
 import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -50,10 +51,7 @@ export default function HistorikkPage() {
   }
 
   function visTilbud(tilbud: LagretTilbud) {
-    sessionStorage.setItem(
-      'tilbudsmaskinen:resultat',
-      JSON.stringify({ id: tilbud.id, input: tilbud.input, resultat: tilbud.resultat })
-    )
+    leggTilbudIOkt({ id: tilbud.id, input: tilbud.input, resultat: tilbud.resultat })
     router.push('/result')
   }
 
