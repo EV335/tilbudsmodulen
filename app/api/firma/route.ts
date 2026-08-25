@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { FAGNAVN } from '@/lib/priser'
+
+/**
+ * Leser et valgfritt tall og holder det innenfor (min, maks), begge eksklusive.
+ * Alt annet — tomt, tekst, NaN, utenfor — blir null, altsaa «ikke bestemt».
+ * Standardverdier er noe brukeren har valgt eller ikke valgt; det finnes ingen
+ * fornuftig klamping av et tall han aldri satte.
+ */
+function tallIOmraade(verdi: unknown, min: number, maks: number): number | null {
+  if (verdi === null || verdi === undefined || verdi === '') return null
+  const tall = Number(verdi)
+  if (!Number.isFinite(tall) || tall <= min || tall >= maks) return null
+  return tall
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -39,6 +53,9 @@ export async function POST(req: NextRequest) {
       betalingsbetingelserDager?: number
       mvaSats?: number
       mvaInkludertStandard?: boolean
+      standardTimepris?: number | null
+      standardMarginProsent?: number | null
+      standardFag?: string | null
     }
 
     if (!body.firmanavn) {
@@ -119,6 +136,16 @@ export async function POST(req: NextRequest) {
           // kan ikke komme i utakt.
           mva_sats: Math.min(Math.max(Number(body.mvaSats) || 0, 0), 100),
           mva_inkludert_standard: Boolean(body.mvaInkludertStandard),
+          // Standardverdiene for tilbudsskjemaet. null = «ikke bestemt», og da
+          // oppforer skjemaet seg som for. De vaktes med samme grenser som
+          // beregnLinje() krever — en timepris paa 0 eller en margin paa 100 gir
+          // henholdsvis ingen pris og divisjon paa null, og en klient som kaller
+          // API-et direkte har ingen av klientens vakter.
+          standard_timepris: tallIOmraade(body.standardTimepris, 0, 100000),
+          standard_margin_prosent: tallIOmraade(body.standardMarginProsent, -1, 100),
+          // Ukjent fagnavn lagres ikke: skjemaet ville falt tilbake paa Maler
+          // uansett, og da er en verdi i basen som ikke betyr noe verre enn ingen.
+          standard_fag: body.standardFag && FAGNAVN.includes(body.standardFag) ? body.standardFag : null,
           ...(logoUrl ? { logo_url: logoUrl } : {}),
         },
         { onConflict: 'user_id' }

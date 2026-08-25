@@ -58,6 +58,29 @@ export interface Operasjon {
    */
   enhetEntall?: string
   enhetFlertall?: string
+  /**
+   * Overskrift i nedtrekkslista. Fagene har vokst — bilpleie har tre
+   * bilstørrelser å velge mellom, maleren har både flater og stykkarbeid — og
+   * en flat liste på elleve punkter er noe man leter i, ikke velger fra.
+   * Uten gruppe havner operasjonen i en gruppe som heter fagets eget navn.
+   */
+  gruppe?: string
+}
+
+/**
+ * En ferdig utfylt jobb, klar til å legges inn med ett klikk.
+ *
+ * Grunnen er målt friksjon: den vanligste malerjobben er «vegger og tak i ett
+ * rom», og den krevde å velge operasjon, fylle antall, trykke «Legg til linje»,
+ * velge operasjon igjen, fylle antall igjen. Fem handlinger for noe som gjøres
+ * hver uke. `antall` settes bare der det faktisk er fast — en bil er én bil,
+ * mens veggflaten i et rom er forskjellig hver gang.
+ */
+export interface Jobbmal {
+  id: string
+  navn: string
+  beskrivelse?: string
+  linjer: { operasjonId: string; antall?: number }[]
 }
 
 /** «... kr per X» — entall. */
@@ -74,6 +97,8 @@ export interface Fag {
   navn: string
   marginProsent: number
   operasjoner: Operasjon[]
+  /** De vanligste jobbene i faget. Tom liste er gyldig. */
+  jobbmaler?: Jobbmal[]
 }
 
 export const FAG: Record<string, Fag> = {
@@ -85,17 +110,20 @@ export const FAG: Record<string, Fag> = {
         id: 'maler_vegg',
         navn: 'Male vegger, 2 strøk',
         enhet: 'm2_vegg',
+        gruppe: 'Flatearbeid',
         timerPerEnhet: 0.15,
         materialPerEnhet: 40,
         markedLav: 140,
         markedHoy: 280,
         kilde: 'marked',
-        hjelpetekst: 'Veggflate, ikke gulvflate. Rom på 20 m² gulv har typisk 45–55 m² vegg.',
+        hjelpetekst:
+          'Veggflate, ikke gulvflate. Har du rommålene i stedet, trykk «Regn ut fra romstørrelse» — da slipper du å regne om selv.',
       },
       {
         id: 'maler_tak',
         navn: 'Male tak, 2 strøk',
         enhet: 'm2_tak',
+        gruppe: 'Flatearbeid',
         timerPerEnhet: 0.25,
         materialPerEnhet: 45,
         markedLav: 250,
@@ -104,13 +132,90 @@ export const FAG: Record<string, Fag> = {
         hjelpetekst: 'Tak er dyrere per m² enn vegg — mer krevende arbeidsstilling.',
       },
       {
+        id: 'maler_vegg_1strok',
+        navn: 'Male vegger, 1 strøk (oppfriskning)',
+        enhet: 'm2_vegg',
+        gruppe: 'Flatearbeid',
+        timerPerEnhet: 0.1,
+        materialPerEnhet: 22,
+        kilde: 'anslag',
+        hjelpetekst:
+          'Samme farge på nytt, uten sparkling. Satsen er avledet av 2-strøk-satsen og ikke markedsverifisert: ett strøk sparer selve påføringen, men ikke maskering og rigg — derfor to tredjedeler av tiden, ikke halvparten. Før timer på en slik jobb, så retter appen den for deg.',
+      },
+      {
         id: 'maler_sparkling',
         navn: 'Sparkling og grunning',
         enhet: 'm2_flate',
+        gruppe: 'Flatearbeid',
         timerPerEnhet: 0.12,
         materialPerEnhet: 25,
         kilde: 'anslag',
         hjelpetekst: 'Legges til der underlaget krever det. Ikke markedsverifisert sats.',
+      },
+      {
+        id: 'maler_listverk',
+        navn: 'Male listverk og karmer',
+        enhet: 'lopemeter',
+        gruppe: 'Stykkarbeid',
+        timerPerEnhet: 0.08,
+        materialPerEnhet: 12,
+        kilde: 'anslag',
+        hjelpetekst:
+          'Gulv- og taklister, dørkarmer. Måles i løpemeter — bruk «Regn ut fra romstørrelse» hvis du har rommålene.',
+      },
+      {
+        id: 'maler_dor',
+        navn: 'Male dør, begge sider',
+        enhet: 'stk',
+        gruppe: 'Stykkarbeid',
+        enhetEntall: 'dør',
+        enhetFlertall: 'dører',
+        timerPerEnhet: 1.2,
+        materialPerEnhet: 120,
+        kilde: 'anslag',
+        hjelpetekst: 'Inkludert karm. Ikke markedsverifisert sats.',
+      },
+      {
+        id: 'maler_vindu',
+        navn: 'Male vindu innvendig',
+        enhet: 'stk',
+        gruppe: 'Stykkarbeid',
+        enhetEntall: 'vindu',
+        enhetFlertall: 'vinduer',
+        timerPerEnhet: 1,
+        materialPerEnhet: 90,
+        kilde: 'anslag',
+        hjelpetekst: 'Karm og ramme. Ikke markedsverifisert sats.',
+      },
+    ],
+    jobbmaler: [
+      {
+        id: 'maler_rom',
+        navn: 'Ett rom — vegger og tak',
+        beskrivelse: 'Den vanligste jobben. Fyll inn målene, så regnes flatene ut.',
+        linjer: [{ operasjonId: 'maler_vegg' }, { operasjonId: 'maler_tak' }],
+      },
+      {
+        id: 'maler_rom_full',
+        navn: 'Ett rom — full oppussing',
+        beskrivelse: 'Sparkling og grunning først, så vegger, tak og listverk.',
+        linjer: [
+          { operasjonId: 'maler_sparkling' },
+          { operasjonId: 'maler_vegg' },
+          { operasjonId: 'maler_tak' },
+          { operasjonId: 'maler_listverk' },
+        ],
+      },
+      {
+        id: 'maler_oppfriskning',
+        navn: 'Oppfriskning — ett strøk vegger',
+        beskrivelse: 'Samme farge på nytt, uten sparkling.',
+        linjer: [{ operasjonId: 'maler_vegg_1strok' }],
+      },
+      {
+        id: 'maler_dorer_vinduer',
+        navn: 'Kun dører og vinduer',
+        linjer: [{ operasjonId: 'maler_dor' }, { operasjonId: 'maler_vindu' }],
       },
     ],
   },
@@ -123,6 +228,7 @@ export const FAG: Record<string, Fag> = {
         id: 'snekker_parkett',
         navn: 'Legge parkett/laminat (klikk)',
         enhet: 'm2_gulv',
+        gruppe: 'Gulv',
         timerPerEnhet: 0.25,
         materialPerEnhet: 400,
         markedLav: 400,
@@ -133,6 +239,7 @@ export const FAG: Record<string, Fag> = {
         id: 'snekker_massivtre',
         navn: 'Legge massivt tregulv (limt)',
         enhet: 'm2_gulv',
+        gruppe: 'Gulv',
         timerPerEnhet: 0.5,
         materialPerEnhet: 700,
         markedLav: 800,
@@ -143,6 +250,7 @@ export const FAG: Record<string, Fag> = {
         id: 'snekker_vinyl',
         navn: 'Legge vinyl/LVT',
         enhet: 'm2_gulv',
+        gruppe: 'Gulv',
         timerPerEnhet: 0.15,
         materialPerEnhet: 250,
         markedLav: 250,
@@ -153,9 +261,23 @@ export const FAG: Record<string, Fag> = {
         id: 'snekker_lister',
         navn: 'Montere lister',
         enhet: 'lopemeter',
+        gruppe: 'Listverk',
         timerPerEnhet: 0.1,
         materialPerEnhet: 60,
         kilde: 'anslag',
+      },
+    ],
+    jobbmaler: [
+      {
+        id: 'snekker_rom_parkett',
+        navn: 'Ett rom - parkett med lister',
+        beskrivelse: 'Den vanligste gulvjobben. Mål rommet, så regnes både areal og løpemeter ut.',
+        linjer: [{ operasjonId: 'snekker_parkett' }, { operasjonId: 'snekker_lister' }],
+      },
+      {
+        id: 'snekker_rom_vinyl',
+        navn: 'Ett rom - vinyl med lister',
+        linjer: [{ operasjonId: 'snekker_vinyl' }, { operasjonId: 'snekker_lister' }],
       },
     ],
   },
@@ -181,6 +303,14 @@ export const FAG: Record<string, Fag> = {
         timerPerEnhet: 0.3,
         materialPerEnhet: 150,
         kilde: 'anslag',
+      },
+    ],
+    jobbmaler: [
+      {
+        id: 'murer_vatrom',
+        navn: 'Våtromsgulv - membran og flis',
+        beskrivelse: 'Membran først, så flis på samme flate.',
+        linjer: [{ operasjonId: 'murer_membran' }, { operasjonId: 'murer_flis' }],
       },
     ],
   },
@@ -211,6 +341,19 @@ export const FAG: Record<string, Fag> = {
         markedLav: 15000,
         markedHoy: 25000,
         kilde: 'marked',
+      },
+    ],
+    jobbmaler: [
+      {
+        id: 'el_kjokken',
+        navn: 'Nytt kjøkken - 8 punkter',
+        beskrivelse: 'Typisk punktantall for et kjøkken. Juster tallet hvis jobben er større.',
+        linjer: [{ operasjonId: 'el_punkt', antall: 8 }],
+      },
+      {
+        id: 'el_skap_og_punkter',
+        navn: 'Bytte sikringsskap',
+        linjer: [{ operasjonId: 'el_sikringsskap', antall: 1 }],
       },
     ],
   },
@@ -253,35 +396,36 @@ export const FAG: Record<string, Fag> = {
         kilde: 'anslag',
       },
     ],
-  },
-
-  Bilpleie: {
-    navn: 'Bilpleie',
-    marginProsent: 35,
-    operasjoner: [
+    jobbmaler: [
       {
-        id: 'bil_polering',
-        navn: 'Polering og lakkforsegling',
-        enhet: 'stk',
-        enhetEntall: 'bil',
-        enhetFlertall: 'biler',
-        timerPerEnhet: 6,
-        materialPerEnhet: 1200,
-        kilde: 'anslag',
-        hjelpetekst: 'Bilpleie måles per bil, ikke i m². Store biler tar lengre tid enn satsen tilsier — juster timene i Mine satser.',
+        id: 'ror_komplett_bad',
+        navn: 'Komplett bad',
+        beskrivelse: 'Rørleggerdelen av et standard bad.',
+        linjer: [{ operasjonId: 'ror_bad', antall: 1 }],
       },
       {
-        id: 'bil_innvendig',
-        navn: 'Innvendig rens',
-        enhet: 'stk',
-        enhetEntall: 'bil',
-        enhetFlertall: 'biler',
-        timerPerEnhet: 3,
-        materialPerEnhet: 400,
-        kilde: 'anslag',
+        id: 'ror_smaajobb',
+        navn: 'Bytte toalett og servant',
+        linjer: [
+          { operasjonId: 'ror_wc', antall: 1 },
+          { operasjonId: 'ror_servant', antall: 1 },
+        ],
       },
     ],
   },
+
+  // Bilpleie lå her fram til 25.08.2026 og er fjernet.
+  //
+  // Faget passet ikke modellen. Alt her hviler på et MÅLBART omfang — en flate,
+  // en lengde, et punkt — og på at samme jobb gjøres på samme måte hver gang.
+  // En bil har ingen av delene: prisen styres av lakkens tilstand og hvor skitten
+  // kupeen er, og det er en befaring, ikke en utregning. Alle elleve
+  // operasjonene sto som `anslag` uten ett eneste markedstall.
+  //
+  // Fagene som står igjen deler én egenskap: håndverkeren måler noe, og tallet
+  // hans blir tilbudet. Se `Rom` i lib/mengde.ts.
+  //
+  // Trenger noen tallene igjen: `git show <commit>^:lib/priser.ts`.
 
   Annet: {
     navn: 'Annet',
@@ -315,6 +459,48 @@ const OPERASJON_ETTER_ID = new Map<string, { fagNavn: string; operasjon: Operasj
     fag.operasjoner.map((operasjon) => [operasjon.id, { fagNavn, operasjon }] as const)
   )
 )
+
+/** Fagets jobbmaler, eller tom liste for et fag som ikke har noen. */
+export function jobbmalerFor(jobbType: string): Jobbmal[] {
+  return hentFag(jobbType).jobbmaler ?? []
+}
+
+export function finnJobbmal(jobbType: string, malId: string): Jobbmal | undefined {
+  return jobbmalerFor(jobbType).find((m) => m.id === malId)
+}
+
+export interface OperasjonsGruppe {
+  navn: string
+  operasjoner: Operasjon[]
+}
+
+/**
+ * Operasjonene gruppert slik nedtrekkslista skal vise dem.
+ *
+ * Rekkefølgen følger `operasjoner`-lista og ikke alfabetet: den er satt med
+ * vilje (liten bil før stor, flatearbeid før stykkarbeid), og en sortering her
+ * ville overstyrt en beslutning som allerede er tatt lenger oppe i fila.
+ *
+ * Har ingen operasjoner i faget en `gruppe`, blir det en gruppe med fagets eget
+ * navn — da ser lista ut nøyaktig som for, uten en overskrift som ikke skiller
+ * noe fra noe.
+ */
+export function grupperteOperasjoner(jobbType: string): OperasjonsGruppe[] {
+  const fag = hentFag(jobbType)
+  const rekkefolge: string[] = []
+  const perGruppe = new Map<string, Operasjon[]>()
+
+  for (const operasjon of fag.operasjoner) {
+    const gruppe = operasjon.gruppe ?? fag.navn
+    if (!perGruppe.has(gruppe)) {
+      perGruppe.set(gruppe, [])
+      rekkefolge.push(gruppe)
+    }
+    perGruppe.get(gruppe)!.push(operasjon)
+  }
+
+  return rekkefolge.map((navn) => ({ navn, operasjoner: perGruppe.get(navn) ?? [] }))
+}
 
 /**
  * Slår opp en operasjon uten å vite faget. Etterkalkylen samler erfaring på

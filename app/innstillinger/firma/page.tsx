@@ -8,7 +8,16 @@ import Input from '@/components/ui/Input'
 import TallInput from '@/components/ui/TallInput'
 import Button from '@/components/ui/Button'
 import Checkbox from '@/components/ui/Checkbox'
+import Select from '@/components/ui/Select'
 import { tilTall, tilTallIOmraade, tilFeltTekst } from '@/lib/tall'
+import { FAG, FAGNAVN, hentFag, marginSomPaaslag } from '@/lib/priser'
+
+// «Ikke bestemt» må være et eget valg og ikke bare et tomt felt: uten det kan
+// den som en gang satte Murer aldri gå tilbake til å velge fag per tilbud.
+const FAG_OPTIONS = [
+  { value: '', label: 'Ingen — velg fag hver gang' },
+  ...FAGNAVN.map((navn) => ({ value: navn, label: FAG[navn].navn })),
+]
 
 interface Firma {
   firmanavn: string
@@ -19,6 +28,9 @@ interface Firma {
   betalingsbetingelser_dager?: number | null
   mva_sats?: number | null
   mva_inkludert_standard?: boolean | null
+  standard_timepris?: number | null
+  standard_margin_prosent?: number | null
+  standard_fag?: string | null
 }
 
 export default function InnstillingerFirmaPage() {
@@ -31,6 +43,9 @@ export default function InnstillingerFirmaPage() {
   const [mvaRegistrert, setMvaRegistrert] = useState(false)
   const [mvaSats, setMvaSats] = useState('25')
   const [mvaInkludertStandard, setMvaInkludertStandard] = useState(false)
+  const [standardTimepris, setStandardTimepris] = useState('')
+  const [standardMargin, setStandardMargin] = useState('')
+  const [standardFag, setStandardFag] = useState('')
   const [logoDataUrl, setLogoDataUrl] = useState<string | undefined>(undefined)
   const [eksisterendeLogoUrl, setEksisterendeLogoUrl] = useState<string | null>(null)
   const [lasterInn, setLasterInn] = useState(true)
@@ -59,6 +74,15 @@ export default function InnstillingerFirmaPage() {
           // brukbar sats med en gang i stedet for a starte pa null.
           if (sats > 0) setMvaSats(tilFeltTekst(sats))
           setMvaInkludertStandard(Boolean(data.mva_inkludert_standard))
+          // Tomt felt betyr «ikke bestemt», og skal bli stående tomt — ikke
+          // fylles med 0, som ville vært en timepris appen faktisk avviser.
+          setStandardTimepris(data.standard_timepris ? tilFeltTekst(data.standard_timepris) : '')
+          setStandardMargin(
+            data.standard_margin_prosent !== null && data.standard_margin_prosent !== undefined
+              ? tilFeltTekst(data.standard_margin_prosent)
+              : ''
+          )
+          setStandardFag(data.standard_fag ?? '')
           setEksisterendeLogoUrl(data.logo_url ?? null)
         }
       })
@@ -89,6 +113,11 @@ export default function InnstillingerFirmaPage() {
           betalingsbetingelserDager: tilTallIOmraade(betalingsbetingelserDager, 1, 365) ?? 14,
           mvaSats: mvaRegistrert ? tilTall(mvaSats) ?? 0 : 0,
           mvaInkludertStandard,
+          // null og ikke 0 for tomme felter: 0 er en timepris, «ikke bestemt» er
+          // ingen verdi. API-et vokter grensene på nytt uansett.
+          standardTimepris: tilTall(standardTimepris),
+          standardMarginProsent: tilTall(standardMargin),
+          standardFag: standardFag || null,
         }),
       })
       if (!res.ok) throw new Error('Lagring feilet')
@@ -187,6 +216,53 @@ export default function InnstillingerFirmaPage() {
               hint="Standard forfallsdato på nye fakturaer, med mindre annet velges."
             />
           </div>
+        </div>
+
+        <div className="border-t border-black/10 pt-6 space-y-6">
+          <div className="text-sm font-bold text-black/50 uppercase tracking-wide">
+            Standard for nye tilbud
+          </div>
+          <p className="text-sm text-black/60">
+            Timeprisen din er den samme hver gang, men skjemaet startet likevel tomt og
+            krevde at den ble tastet inn på nytt for hvert eneste tilbud. Setter du den
+            her, står den ferdig utfylt. Alt kan fortsatt overstyres per tilbud.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <TallInput
+              id="standard-timepris"
+              label="Timepris (kr, eks. mva)"
+              value={standardTimepris}
+              onChange={(e) => setStandardTimepris(e.target.value)}
+              placeholder="f.eks. 750"
+              hint="Tomt felt = skjemaet starter tomt, som før."
+            />
+
+            <div>
+              <TallInput
+                id="standard-margin"
+                label="Margin (% av salgspris)"
+                value={standardMargin}
+                onChange={(e) => setStandardMargin(e.target.value)}
+                placeholder={`f.eks. ${hentFag(standardFag || 'Maler').marginProsent}`}
+                hint="Tomt felt = fagets egen standardmargin."
+              />
+              {(tilTall(standardMargin) ?? -1) > 0 && (tilTall(standardMargin) ?? -1) < 100 && (
+                <p className="mt-2 text-sm text-black/60">
+                  Tilsvarer <strong>{marginSomPaaslag(tilTall(standardMargin) ?? 0)} % påslag</strong> på
+                  kostnaden.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <Select
+            id="standard-fag"
+            label="Fag som er valgt fra start"
+            value={standardFag}
+            onChange={(e) => setStandardFag(e.target.value)}
+            options={FAG_OPTIONS}
+          />
         </div>
 
         <div className="border-t border-black/10 pt-6 space-y-6">

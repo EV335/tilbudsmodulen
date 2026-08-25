@@ -2,7 +2,7 @@ import Section from '@/components/ui/Section'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 
-const FAG = ['Malere', 'Snekkere', 'Rørleggere', 'Elektrikere', 'Murere', 'Bilpleie']
+const FAG = ['Malere', 'Snekkere', 'Gulvleggere', 'Flisleggere', 'Rørleggere', 'Elektrikere']
 
 export default function Home() {
   return (
