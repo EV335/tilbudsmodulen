@@ -230,3 +230,46 @@ export function sjekkSamsvar(gulvM2: number | null, takM2: number | null): strin
   if (avvik <= 0.1) return null
   return `Du har ført ${gulvM2} m² gulv og ${takM2} m² tak. I et rom er de like store — sjekk tallene, med mindre taket er skrått eller innkasset.`
 }
+
+// Teksten gaar rett ut i tilbudet kunden leser, saa tallene maa vaere norske.
+// «4.2 × 3.1 m» er ikke et norsk maal — og denne kodebasen har traadt i den
+// fella foer, med «kr 12 033,25,-» paa en ekte faktura.
+function nb(n: number): string {
+  return n.toLocaleString('nb-NO')
+}
+
+/**
+ * Rommene slik kunden skal lese dem i tilbudet.
+ *
+ * Malervennen sa at tilbudene ikke beskriver jobben som faktisk skal utfoeres.
+ * En del av det er at «45 m² veggflate» ikke sier hvilke rom det gjelder — og
+ * uenighet om HVILKE rom som var med i prisen er den dyreste uenigheten man kan
+ * ha med en kunde, fordi den kommer for dagen etter at arbeidet er gjort.
+ *
+ * Rom uten navn nummereres, slik at fire rader ikke blir fire like linjer.
+ */
+export function romTekst(rom: Rom[]): string | null {
+  const komplette = rom.filter((r) => tall(r.lengde) !== null && tall(r.bredde) !== null)
+  if (komplette.length === 0) return null
+
+  return komplette
+    .map((r, i) => {
+      const navn = r.navn?.trim() || `Rom ${i + 1}`
+      const hoyde = tall(r.hoyde)
+      const maal = `${nb(r.lengde!)} × ${nb(r.bredde!)} m${
+        hoyde !== null ? `, takhøyde ${nb(hoyde)} m` : ''
+      }`
+      return `${navn} (${maal})`
+    })
+    .join(', ')
+}
+
+/**
+ * Bare rommene som faktisk har maal.
+ *
+ * Skjemaet starter med en tom rad, og en tom rad skal ikke lagres med tilbudet
+ * og senere leses som «et rom uten maal» av noen som lurer paa hva det betyr.
+ */
+export function komplette(rom: Rom[]): Rom[] {
+  return rom.filter((r) => tall(r.lengde) !== null && tall(r.bredde) !== null)
+}

@@ -26,6 +26,8 @@ import {
   kommerFraRom,
   fagBrukerRom,
   sjekkSamsvar,
+  romTekst,
+  komplette,
   DOR_M2,
   VINDU_M2,
   DOR_BREDDE_M,
@@ -747,6 +749,31 @@ sjekk('grupperingen mister ingen operasjon',
 sjekk('maleren deles i flate- og stykkarbeid', grupperteOperasjoner('Maler').length === 2)
 sjekk('annet star udelt', grupperteOperasjoner('Annet').length === 1)
 
-const ANTALL = 148
+// 32) Rommene lagres MED tilbudet og skrives ut i teksten kunden leser.
+//     Malervennen sa at tilbudene ikke beskriver jobben som skal utfoeres, og
+//     «45 m2 veggflate» sier ikke hvilke rom det gjelder. Uenighet om HVILKE
+//     rom som var med i prisen kommer for dagen etter at arbeidet er gjort.
+const romListe = [
+  { navn: 'Stue', lengde: 4.2, bredde: 3.1, hoyde: 2.4 },
+  { navn: '', lengde: 3, bredde: 3, hoyde: 2.4 },
+  { lengde: undefined, bredde: 2 },
+]
+const tekst = romTekst(romListe)!
+// Teksten gaar rett ut i tilbudet kunden leser. «4.2 x 3.1 m» er ikke et norsk
+// maal — og denne kodebasen har traadt i den fella foer, med «kr 12 033,25,-»
+// paa en ekte faktura.
+sjekk('rommene navngis i tilbudsteksten', tekst.includes('Stue (4,2 × 3,1 m'), tekst)
+sjekk('maalene skrives med norsk desimaltegn', !tekst.includes('4.2'), tekst)
+sjekk('rom uten navn nummereres', tekst.includes('Rom 2'), tekst)
+sjekk('tomme rader kommer ikke med i teksten', !tekst.includes('Rom 3'), tekst)
+sjekk('takhoyden staar med naar den er oppgitt', tekst.includes('takhøyde 2,4 m'))
+sjekk('uten maal er det ingen romtekst', romTekst([{}]) === null)
+
+// Skjemaet starter med en tom rad. Den skal ikke lagres og senere leses som
+// «et rom uten maal» av noen som lurer paa hva det betyr.
+sjekk('bare komplette rom lagres', komplette(romListe).length === 2)
+sjekk('tomt skjema lagrer ingen rom', komplette([{}]).length === 0)
+
+const ANTALL = 156
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

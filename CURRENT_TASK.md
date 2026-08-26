@@ -2453,6 +2453,58 @@ en runde med et tilbud som mangler halve arbeidet, er en runde som bekrefter
 det han allerede har sagt.
 
 
+### 49. Rommålene lagres med tilbudet — 2026-08-25
+
+En mangel i det jeg leverte i punkt 47: håndverkeren målte opp fire rom, appen
+regnet ut flatene — og så ble målene kastet. `rom` var lokal skjematilstand.
+Ingenting av «Stue 4,2 × 3,1 × 2,4, én dør, to vinduer» overlevde innsendingen.
+
+Det er en del av det malervennen peker på i punkt 48: «45 m² veggflate» sier
+ikke hvilke rom det gjelder. **Uenighet om HVILKE rom som var med i prisen er
+den dyreste uenigheten man kan ha med en kunde**, fordi den kommer for dagen
+etter at arbeidet er gjort.
+
+Rommene følger nå med tilbudet og står i teksten kunden leser:
+
+```
+Omfang:
+Rom: Stue (4,2 × 3,1 m, takhøyde 2,4 m)
+- Male vegger, 2 strøk: 31,7 m² veggflate — kr 6 451,-
+- Male tak, 2 strøk: 13 m² takflate — kr 4 031,-
+```
+
+De sendes også til AI-en, som fortsatt ikke rører et eneste tall — den får det
+ferdige regnestykket og navngir rommene.
+
+**Tre ting det var lett å gjøre feil:**
+
+1. **Feltekstene tolkes ETT sted.** `romVerdier` brukes både av utregningen og
+   av det som lagres. To tolkninger av de samme feltene er nøyaktig den typen
+   par som kommer i utakt.
+2. **Tomme rader lagres ikke.** Skjemaet starter med én tom rad; den skulle
+   ikke bli et «rom uten mål» noen lurer på betydningen av senere.
+3. **Serveren vokter rommene på nytt.** De kommer fra klienten og vises til en
+   kunde. Ugyldige verdier faller bort i stillhet i stedet for å avvise hele
+   tilbudet — et rom er tilleggsinformasjon, og et regnestykke som ellers går
+   opp skal ikke stoppe på en takhøyde noen har skrevet feil.
+
+#### To tall med punktum i et norsk kundedokument
+
+Verifiseringen avdekket at romlinja sto som «4.2 × 3.1 m», og at malteksten har
+skrevet «Estimert tidsbruk: 8.01 timer» hele tiden — `sum.timer` gikk rått inn i
+strengen uten `formatTall`. Begge er rettet. Det siste er eldre enn denne økta og
+har stått i hvert eneste malbaserte tilbud.
+
+Samme feilform som «kr 12 033,25,-» i punkt 39: et tall som går rett ut til
+kunden uten å bli formatert på veien.
+
+156 tester (8 nye), tsc rent, bygg grønt.
+
+⚠️ Fortsatt åpent: **arbeidet rundt arbeidet** (punkt 48 del 2). Rommene er
+navngitt nå, men tildekking, maskering, vask og opprydding har fremdeles ingen
+linje. Det venter på malervennens liste.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |

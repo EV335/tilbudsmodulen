@@ -5,6 +5,7 @@ import {
   BeregnetSum,
   TilbudLinjeInput,
 } from '@/lib/priser'
+import { romTekst, type Rom } from '@/lib/mengde'
 
 export interface TilbudInput {
   jobbType: string
@@ -13,6 +14,15 @@ export interface TilbudInput {
   marginProsent?: number
   beskrivelse?: string
   kundenavn?: string
+  /**
+   * Rommene jobben gjelder, slik de ble maalt.
+   *
+   * Lagres MED tilbudet og ikke bare brukt til aa regne ut antallene: maalene
+   * er selve grunnlaget for prisen, og uten dem kan ingen etterpaa se hvilke
+   * rom som var med. De brukes ikke i utregningen — antallene staar allerede
+   * paa linjene — men de staar i teksten kunden leser.
+   */
+  rom?: Rom[]
   /** Kun for tilbud lagret før linjemodellen (august 2026). Brukes ikke i utregning. */
   romstorrelseM2?: number
   materialkost?: number
@@ -90,15 +100,17 @@ function malbasertTekst(input: TilbudInput, sum: BeregnetSum): Omit<TilbudResult
 
   const risikoanalyse = `Prisen bygger på oppgitt omfang og normal tidsbruk for ${input.jobbType.toLowerCase()}-arbeid. Skjulte forhold, dårlig tilgjengelighet eller avvik i underlaget kan øke tidsbruk og materialkostnad. Ved usikkerhet anbefales befaring før prisen bekreftes.`
 
+  const rom = input.rom ? romTekst(input.rom) : null
+
   const tilbudstekst = `TILBUD${input.kundenavn ? ` – ${input.kundenavn}` : ''}
 
 Jobbtype: ${input.jobbType}${input.beskrivelse ? `\nBeskrivelse: ${input.beskrivelse}` : ''}
 
-Omfang:
+Omfang:${rom ? `\nRom: ${rom}` : ''}
 ${sum.linjer.map(linjeTekst).join('\n')}
 
 Samlet fastpris: kr ${formatTall(sum.prisKr)},-
-Estimert tidsbruk: ${sum.timer} timer.
+Estimert tidsbruk: ${formatTall(sum.timer)} timer.
 
 Prisen inkluderer arbeid og materialer som beskrevet over. Tillegg utover avtalt
 omfang avtales særskilt før arbeidet igangsettes.
@@ -202,6 +214,9 @@ export async function genererTilbud(input: TilbudInput): Promise<TilbudResult> {
               jobbType: input.jobbType,
               kundenavn: input.kundenavn || undefined,
               beskrivelse: input.beskrivelse || 'Ingen ytterligere beskrivelse oppgitt.',
+              // Rommene sendes med saa teksten kan navngi dem. AI-en rorer
+              // fortsatt ingen tall — den faar det ferdige regnestykket.
+              rom: (input.rom ? romTekst(input.rom) : null) || undefined,
               omfang: sum.linjer.map((l) => ({
                 arbeid: l.navn,
                 antall: l.antall,

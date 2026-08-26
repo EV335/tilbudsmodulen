@@ -19,6 +19,7 @@ import {
 } from '@/lib/priser'
 import {
   maalOpp,
+  komplette,
   mengdeFor,
   kommerFraRom,
   fagBrukerRom,
@@ -168,22 +169,25 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
   }))
   const jobbmaler = jobbmalerFor(jobbType)
 
-  const maal = useMemo(
+  // Feltekstene tolkes ETT sted. Rommene brukes bade til utregningen og til det
+  // som lagres med tilbudet, og to tolkninger av de samme feltene er nettopp
+  // den typen par som kommer i utakt.
+  const romVerdier = useMemo(
     () =>
-      maalOpp(
-        rom.map(
-          (r): Rom => ({
-            navn: r.navn,
-            lengde: tilTall(r.lengde) ?? undefined,
-            bredde: tilTall(r.bredde) ?? undefined,
-            hoyde: tilTall(r.hoyde) ?? undefined,
-            dorer: tilTall(r.dorer) ?? undefined,
-            vinduer: tilTall(r.vinduer) ?? undefined,
-          })
-        )
+      rom.map(
+        (r): Rom => ({
+          navn: r.navn,
+          lengde: tilTall(r.lengde) ?? undefined,
+          bredde: tilTall(r.bredde) ?? undefined,
+          hoyde: tilTall(r.hoyde) ?? undefined,
+          dorer: tilTall(r.dorer) ?? undefined,
+          vinduer: tilTall(r.vinduer) ?? undefined,
+        })
       ),
     [rom]
   )
+
+  const maal = useMemo(() => maalOpp(romVerdier), [romVerdier])
 
   /**
    * Mengden linja skal regnes med.
@@ -341,6 +345,10 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
       timepris: tilTall(timepris) ?? 0,
       marginProsent: tilTall(margin) ?? -1,
       linjer: gyldigeLinjer(),
+      // Maalene er selve grunnlaget for prisen. Uten dem kan ingen etterpaa se
+      // hvilke rom som var med i tilbudet — og uenighet om DET er den dyreste
+      // uenigheten man kan ha med en kunde.
+      rom: visRom ? komplette(romVerdier) : undefined,
       beskrivelse,
       kundenavn,
     })
@@ -475,13 +483,7 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
                 <Flatetall etikett="Listverk" verdi={`${maal.listverkLm} lm`} />
               </div>
               <div className="mt-3 space-y-1">
-                {utregning(
-                  rom.map((r) => ({
-                    dorer: tilTall(r.dorer) ?? undefined,
-                    vinduer: tilTall(r.vinduer) ?? undefined,
-                  })),
-                  maal
-                ).map((linje) => (
+                {utregning(romVerdier, maal).map((linje) => (
                   <p
                     key={linje}
                     className={linje.startsWith('⚠') ? 'text-sm font-bold text-amber-800' : 'text-sm text-black/60'}
