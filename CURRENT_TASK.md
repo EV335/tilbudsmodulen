@@ -2052,6 +2052,407 @@ Commit `ca3c506`. 99 tester, tsc rent, bygg grønt.
 Begge hører hjemme i samme samtale som de sju andre satsene under.
 
 
+### 45. Appen fikk en forside for den som er logget inn — 2026-08-25
+
+Til nå hadde ikke appen noe sted å lande. Logoen i headeren pekte på salgssiden,
+også for den som var logget inn, så et klikk på firmanavnet sitt ga
+«Start beregning → Logg inn» — en runde han allerede hadde tatt. Menyen begynte
+på «Nytt tilbud», altså midt i en arbeidsoppgave.
+
+**Ny side `/oversikt`**, med fire deler:
+
+| Del | Svarer på |
+|---|---|
+| Fire nøkkeltall | Hva har jeg tilbudt denne måneden, hva venter jeg på penger for, hva er betalt, hvor mye bommer jeg |
+| Neste steg | Forfalte fakturaer, fakturerte jobber uten førte timer, satser som har fått et forslag — hver med en lenke rett dit |
+| Treffsikkerhet over tid | «Traff du bedre i august enn i juni» — punkt 1 i veikartet |
+| Siste tilbud | De fem nyeste, klikkbare rett inn i resultatvisningen |
+
+`/oversikt` står nå først i menyen, logoen peker dit for innloggede, og «Hjem»
+vises bare for den som ikke har konto. Ruta ligger i middleware-matcheren —
+verifisert: `/oversikt` uten sesjon havner på `/logg-inn`.
+
+**Tre valg som er verdt å huske, fordi de kunne gått andre veien:**
+
+1. **Måneden er den TILBUDET ble laget i, ikke den timene ble ført i.**
+   Spørsmålet handler om estimatene. Et tilbud skrevet i juni som først fikk
+   timene sine ført i august er fortsatt et juni-estimat. Bøttet vi på
+   registreringsdatoen, ville en opprydding der fem gamle jobber føres samme
+   kveld sett ut som én forferdelig måned — og alle månedene de hørte til
+   stått tomme.
+2. **Typisk bom er MEDIANEN, ikke snittet.** Testen viser hvorfor: tre
+   junijobber som bommet 10 %, 20 % og 400 % gir median 20 % og snitt 143 %.
+   Snittet måler uhellet, ikke treffsikkerheten.
+3. **Bare FAKTURERTE jobber blir bedt om timer.** Et tilbud som aldri ble solgt
+   har ingen timer å føre. En liste som maste om timer på hvert eneste tilbud
+   ville vært støy — og dermed blitt oversett også de gangene den hadde rett.
+
+**Lest fra forrige runde: par som kommer i utakt.** Ingenting av det oversikten
+trengte ble regnet ut på nytt. «Utestående» spør `kanBetales`, den samme som
+styrer betalingsknappen. Avviket bygger på `sumEstimerteTimer(linjer) ||
+tidsbrukTimer`, nøyaktig samme grunnlag som avviksmerket i historikken.
+Beløpene går via `fakturaBelop`, forslagene via `samleErfaring`/`harForslag`.
+
+**Tre ting flyttet ut i delt kode, så de ikke ble kopi nummer to:**
+- `erForfalt` i `lib/fakturaStatus.ts` — ved siden av `kanBetales`, slik at
+  fakturalista kan merke forfalte rader uten å finne på sin egen definisjon.
+  Forfall er en DATO: `new Date('2026-08-20')` er midnatt UTC, som i en tidssone
+  bak UTC lander kvelden før — og da ville appen meldt «forfalt» om en faktura
+  som forfaller i dag. Datodelene leses ut for hånd.
+- `maanedNokkel`/`formatMaaned` i `lib/format.ts` — lokal tid, ikke UTC. Et
+  tilbud lagret 31. august kl. 23:30 norsk tid er en augustjobb.
+- `lib/tilbudsokt.ts` — nøkkelen `'tilbudsmaskinen:resultat'` lå som løs tekst
+  fire steder (kalkulator, historikk, to kall på resultatsiden). Oversikten
+  ville blitt den femte. En skrivefeil i én av dem gir en resultatside som bare
+  sier «fant ingen beregning», uten spor av hvorfor.
+
+116 tester (17 nye), tsc rent, bygg grønt. **Ikke committet** — ligger i
+arbeidstreet.
+
+⚠️ **Ikke sett med egne øyne:** selve den innloggede visningen. Innlogging
+krever en magic link på e-post. Det som ER verifisert: `/oversikt` redirecter
+riktig til `/logg-inn` uten sesjon, og regnestykkene bak sida er dekket av
+tester.
+
+**Merk hva bygget IKKE beviser.** `next build` markerer `/oversikt` som statisk
+prerendret, men den prerendrede HTML-en inneholder bare «Laster...» — under SSR
+står `useSession()` i `loading`, så datagrenene rendres aldri. Bygget beviser at
+modulgrafen holder, ikke at oversikten ser riktig ut. Logg inn på
+localhost:3000 for å se den med ekte tall — særlig på telefon, der de fire
+nøkkeltallene stables.
+
+
+### 46. Utfyllingen bygget om — maler, bilpleie og alle de andre — 2026-08-25
+
+> **Delvis erstattet samme dag, se punkt 47.** Bilpleie er fjernet igjen, og
+> mengdehjelperne per linje er byttet ut med ett felles sett rommål. Resten —
+> malerens nye operasjoner, jobbmalene, standardverdiene, grupperingen og
+> sammenslåtte advarsler — står.
+
+Oppdrag fra bruker: endre hva maleren og bilpleieren fyller ut for å lage
+tilbud, med fokus på å optimalisere tilbudslagingen for alle yrkene.
+
+**Prismodellen var riktig. Den spurte om feil ting.** Fire grep:
+
+#### 1. Mengdehjelpere — appen regner om, ikke håndverkeren
+
+Hjelpeteksten til `maler_vegg` sa bokstavelig: «Veggflate, ikke gulvflate. Rom
+på 20 m² gulv har typisk 45–55 m² vegg.» Appen ba altså maleren gjøre en
+omregning med tommelfingerregel før han fikk lov til å fylle ut feltet — og en
+maler som måler et rom noterer 4,2 × 3,1 m og 2,4 m under taket, ikke 35 m²
+veggflate.
+
+Ny fil [lib/mengde.ts](lib/mengde.ts). Tre hjelpere, koblet til enhet og ikke
+til fag, så de treffer alle som måler noe:
+
+| Hjelper | Enheter | Regner |
+|---|---|---|
+| Veggflate fra rom | `m2_vegg`, `m2_flate` | 2 × (l + b) × h, minus dører og vinduer |
+| Flate fra lengde × bredde | `m2_tak`, `m2_gulv`, `m2_flate` | l × b |
+| Omkrets fra rom | `lopemeter` | 2 × (l + b), minus døråpninger |
+
+Regnestykket vises i klartekst under feltene — «2 × (4 + 3) × 2,4 = 33,6 m²
+vegg, minus 1,9 m² for 1 dør» — slik at tallet kan ettergås. `stk`, `punkt` og
+`time` har ingen hjelper: et sikringsskap og en bil telles, de måles ikke.
+
+#### 2. Bilpleie: størrelsen er blitt prisvariabelen
+
+Dette er punkt 44 sitt åpne spørsmål, nå besvart. `bil_polering` sto på **6
+timer flatt**, og hjelpeteksten ba bilpleieren «justere timene i Mine satser»
+for store biler. Det er ikke en innstilling — det er en ny jobb hver gang en SUV
+kjører inn, og en sats som skal dras fram og tilbake blir aldri riktig for noen
+av dem.
+
+| Tjeneste | Liten bil | Mellomstor | Stor bil |
+|---|---|---|---|
+| Utvendig vask og avfetting | 0,75 t | 1 t | 1,35 t |
+| Polering og lakkforsegling | 4,5 t | **6 t** | 8 t |
+| Innvendig rens | 2,25 t | **3 t** | 4 t |
+
+De uthevede er de gamle satsene, urørt. **`bil_polering` og `bil_innvendig`
+beholder id-ene sine** og er mellomstor bil — de ligger i lagrede tilbud og i
+registrerte timer, og `finnOperasjon` hopper *stille* over id-er den ikke
+kjenner. En omdøping ville gjort all den erfaringen hjemløs uten et varsel. Det
+er nå en test som vokter det for alle sytten gamle id-ene.
+
+Faktorene 0,75× og 1,35× er **anslag**, avledet av lakkflate og kupévolum. Den
+virkelige gevinsten er ikke at tallet er riktig fra dag én, men at
+**etterkalkylen nå lærer hver størrelse for seg**: fem førte SUV-jobber retter
+SUV-satsen, ikke småbilsatsen. Det kunne den ikke da alt lå på ett tall.
+
+To nye operasjoner er størrelsesuavhengige med vilje: dybderens telles **per
+sete** — det er setene som tar tid, ikke bilen rundt dem — og luktfjerning
+(ozon) går på tid i kupeen. Faget gikk fra 2 til 11 operasjoner.
+
+#### 3. Maleren fikk arbeidet han faktisk selger
+
+Faget hadde tre operasjoner, alle flatearbeid. En maler som skulle prise dører,
+vinduer eller listverk hadde ikke noe felt for det. Fire nye, alle `anslag`:
+1 strøk (oppfriskning), listverk og karmer (løpemeter), dør, vindu.
+
+1 strøk står på 0,10 t/m² mot 2 strøk sitt markedsverifiserte 0,15 — ett strøk
+sparer påføringen, ikke maskering og rigg, derfor to tredjedeler og ikke
+halvparten. Den fikk **ikke** arve markedsbåndet 140–280 kr/m²: en ettstrøksjobb
+skal ligge under det, og båndet ville gitt et falskt «under markedet»-varsel på
+hver eneste linje.
+
+#### 4. To grep som gjelder alle sju fagene
+
+**Jobbmaler.** «Ett rom — vegger og tak» krevde fem handlinger for en jobb som
+gjøres hver uke. Nå er det ett klikk. Seks av sju fag har maler; `antall` settes
+bare der det faktisk er fast (én bil er én bil, mens veggflaten er ulik hver
+gang). En test vokter at ingen mal peker på en operasjon som ikke finnes — en
+slik mal ville lagt inn en tom linje uten å si fra, midt i handlingen som skal
+spare tid.
+
+**Standardverdier på firmaet.** Timeprisen er den samme hver gang, men skjemaet
+startet tomt og krevde den på nytt for hvert tilbud, i alle fag. `firma` har nå
+`standard_timepris`, `standard_margin_prosent` og `standard_fag` — alle
+nullable, der NULL betyr «ikke bestemt» og skjemaet oppfører seg nøyaktig som
+før. Hentes gjennom `FirmaProvider`, ikke et nytt kall: den finnes nettopp fordi
+`/api/firma` ellers ble kalt to ganger på samme sidevisning.
+
+⚠️ **Krever migrasjon:** `migrations/20260825_firma_standardverdier.sql`. Til den
+er kjørt, er feltene på «Mitt firma» uten effekt.
+
+#### Mindre ting som fulgte med
+
+- **Grupperte nedtrekkslister.** Elleve bilpleie-operasjoner i en flat liste er
+  noe man leter i. `Select` støtter nå `<optgroup>`, og ett fag uten grupper
+  vises nøyaktig som før — én gruppe får ingen overskrift.
+- **Advarsler slås sammen.** En malerjobb med sparkling, listverk, dør og vindu
+  ga fire identiske amber-bokser under hverandre. Fire like varsler leses som
+  støy, også den gangen ett av dem betyr noe. Nå én boks per ulik advarsel, med
+  operasjonene listet.
+
+139 tester (23 nye), tsc rent, bygg grønt. **Ikke committet.**
+
+#### Slik ble det verifisert uten å kunne logge inn
+
+`/calc` ligger bak innlogging, og magic link krever e-post. Men `InputForm`
+bruker ikke `useSession` — det gjør bare sida rundt den. Skjemaet ble derfor
+rendret direkte med `react-dom/server` i en midlertidig harness (slettet
+etterpå; kjør med en `tsconfig` som setter `jsx: "react-jsx"`, ellers faller
+`tsx` tilbake på klassisk runtime og React er udefinert). Bekreftet i markupen:
+
+- jobbmal-knappene står der, med «Ett rom — vegger og tak»
+- `<optgroup label="Flatearbeid">` og `<optgroup label="Stykkarbeid">` — altså
+  at grupperingen faktisk når fram til DOM-en
+- «Regn ut fra romstørrelse» tilbys på veggflatelinja, og ikke andre steder
+- antallfeltet er merket «Antall (m² veggflate)»
+- de nye maleroperasjonene er valgbare
+
+⚠️ **Fortsatt ikke sett i drift:** samspillet som krever klikk — at en jobbmal
+faktisk bytter ut linjene, og at måltall skriver seg inn i antall-feltet mens
+man taster. Logikken bak begge er testdekket, koblingen er ikke. Dev-serveren
+kjører på localhost:3000.
+
+**Merk også her:** `next build` prerendrer `/calc`, men HTML-en inneholder bare
+«Laster...» — SSR står i `useSession()`-loading. Bygget beviser modulgrafen,
+ikke skjemaet.
+
+**Åpent, og det bør avklares med fagfolk:** faget bilpleie har nå elleve
+operasjoner uten ett eneste markedstall, og maleren fem. Appen varsler på hver
+av dem, og etterkalkylen retter dem etter tre førte jobber — men listen i
+«GJENSTÅR»-punkt 6 er blitt vesentlig lengre, ikke kortere. Det er et bevisst
+bytte: et fag som ikke kan uttrykke jobben sin er verre enn et fag med satser
+som må kalibreres.
+
+
+### 47. Rommet ble ett tall, og bilpleie gikk ut — 2026-08-25
+
+Innvending fra bruker rett etter punkt 46: fjern bilpleie, og fokuser på yrker
+som har et **bestemt jobbareal** og en fast måte å jobbe og prise på. Nøkkelen
+skal være at det er lett og rett — både prisen og håndverkerens jobb: gulv, tak
+og resten må stemme.
+
+**Han hadde rett på begge, og den andre innvendingen traff noe jeg nettopp
+hadde bygget feil.**
+
+#### Bilpleie ut
+
+Faget passet aldri modellen. Alt i appen hviler på et målbart omfang — en flate,
+en lengde, et punkt — og på at samme jobb gjøres likt hver gang. En bil har
+ingen av delene: prisen styres av lakkens tilstand og hvor skitten kupeen er, og
+det er en befaring, ikke en utregning. Alle elleve operasjonene sto som `anslag`
+uten ett eneste markedstall, og punkt 46 gjorde dem bare mer detaljerte, ikke
+mer sanne.
+
+Fagene som står igjen deler én egenskap: **håndverkeren måler eller teller noe
+fast, og tallet hans blir tilbudet.** Maler, snekker/gulvlegger, murer/flislegger
+måler. Elektriker og rørlegger teller.
+
+Forsida listet også «Bilpleie» blant fagene appen er laget for — nå står
+Gulvleggere og Flisleggere der i stedet.
+
+#### Rommet: ett sett mål, alle flatene
+
+Punkt 46 ga hver linje sin egen regner. Det løste hoderegningen, men **skapte en
+verre feil**: de samme målene måtte tastes inn på nytt for hver operasjon, og
+kunne drive fra hverandre. 21 m² gulv og 23 m² tak i samme rom er et tilbud som
+ikke går opp — og kunden ser det før håndverkeren gjør det. «Alt må stemme» var
+nettopp den feilen.
+
+Målene ligger nå på JOBBEN, ikke på linja:
+
+```
+gulv     = lengde × bredde
+tak      = lengde × bredde          ← samme tall, per definisjon
+vegg     = 2 × (lengde + bredde) × høyde − dører×1,9 − vinduer×1,4
+listverk = 2 × (lengde + bredde) − dører×0,9
+```
+
+Han måler rommet én gang. Hver linje henter mengden fra riktig tall, og feltet
+viser «31,7 — fra målene over» i stedet for å be om et tall. **Taket kan ikke bli
+et annet areal enn gulvet.** Flere rom summeres — en maler priser sjelden ett rom
+om gangen. Overstyring er ett klikk unna («Skriv inn selv i stedet»), for
+skråtak og alt annet virkeligheten finner på.
+
+Tre valg som kunne gått andre veien:
+
+1. **Taket ER gulvet.** Skråtak finnes, men da overstyrer håndverkeren manuelt.
+   Det er hans avgjørelse, ikke en antakelse appen skal gjøre på egen hånd.
+2. **Rom uten takhøyde teller på gulv og listverk, men ikke på vegg — og det
+   sies fra om.** En stille for liten veggflate er et for billig tilbud, og den
+   feilen oppdages først når jobben er gjort.
+3. **`m2_flate` er den eneste tvetydige enheten.** Flis ligger både på gulv og
+   vegg, sparkling på vegg, membran på gulv. Håndverkeren velger flate på linja
+   — appen gjetter et utgangspunkt, den bestemmer ikke.
+
+Elektrikeren og rørleggeren ser ikke målefeltene i det hele tatt. `fagBrukerRom`
+avgjør det av enhetene i faget, ikke av en liste med fagnavn — legges det inn et
+nytt fag som måler noe, får det målefeltene uten at noen må huske det.
+
+#### Samsvarssjekken
+
+Skriver han inn gulv og tak for hånd og de spriker med mer enn 10 %, sier appen
+fra. Kommer begge fra rommålene ER de like, og da er varselet borte — et varsel
+som ikke kan utløses av noe ekte, lærer folk å overse varsler.
+
+#### Én vei til mengden
+
+`mengden(linje)` brukes av både forhåndsvisningen og innsendingen. Med to veier
+kunne det håndverkeren så på skjermen vært et annet tall enn det som ble sendt
+inn — samme feilform som gjennomgangen i punkt 43 kalte «par som kommer i
+utakt», og den eneste jeg visste om på forhånd her.
+
+148 tester (34 nye siden i går), tsc rent, bygg grønt. **Ikke committet.**
+
+#### Verifisert
+
+`InputForm` bruker ikke `useSession` — det gjør bare sida rundt den. Skjemaet
+ble rendret direkte med `react-dom/server` i en midlertidig harness (slettet
+etterpå; krever en `tsconfig` med `jsx: "react-jsx"`, ellers faller `tsx`
+tilbake på klassisk runtime og React er udefinert). Bekreftet i markupen:
+målefeltene står øverst med takhøyde, «+ Legg til rom» finnes, nedtrekkslista er
+gruppert, antallfeltet er merket «Antall (m² veggflate)», Bilpleie er borte fra
+fagvelgeren, og uten rommål er antall et vanlig felt og ikke en låst rute som
+viser 0.
+
+⚠️ **Fortsatt ikke sett i drift:** at tallene faktisk oppdaterer seg mens man
+taster i målefeltene, og at «Skriv inn selv i stedet» gjør det den lover.
+Regnestykkene bak er testdekket, koblingen er ikke. Dev-serveren kjører på
+localhost:3000.
+
+#### Databasen er sjekket — ingen bilpleiedata
+
+Risikoen ved å fjerne faget var at lagrede tilbud med `bil_*`-operasjoner ikke
+lenger kan etterregnes: `hentOperasjon` finner dem ikke, og `finnOperasjon`
+hopper *stille* over dem i etterkalkylen. Selve tilbudet ville fortsatt vist seg
+(resultatet er lagret som øyeblikksbilde), men erfaringen bak ville forsvunnet
+uten et ord.
+
+Kjørt mot basen med service_role-nøkkelen fra `.env.local`:
+
+| | Totalt | Med `bil_*` |
+|---|---|---|
+| `tilbud` | **1** | **0** |
+| `etterkalkyler` | **0** | **0** |
+
+Det ene tilbudet er et malertilbud. **Fjerningen tar ingenting med seg i
+fallet.**
+
+⚠️ **To ting dette avdekket, som ikke handler om bilpleie:**
+
+1. **Basen er så godt som tom.** Ett tilbud, null registrerte timer. Punkt 24
+   beskriver en full produksjonsflyt, og punkt 42 at malervennen er lagt til —
+   men det finnes ikke spor av det her. Enten er tilbudene slettet underveis,
+   eller så peker Vercel på et ANNET Supabase-prosjekt enn `.env.local` gjør.
+   Det siste er verdt å avklare før noen stoler på tall fra basen.
+2. **Oversikten fra punkt 45 vil stå tom.** Uten registrerte timer har
+   «Treffsikkerhet over tid» ingenting å vise, og «Neste steg» bare det ene
+   tilbudet. Sida er ikke ødelagt — den viser tomtilstandene sine — men den kan
+   ikke vurderes på ekte tall før noen fører timer på en jobb.
+
+**Forbeholdet:** sjekken gjelder databasen `.env.local` peker på. Bruker Vercel
+et annet Supabase-prosjekt, er DET prosjektet ikke sjekket. Skriptet lå i
+`scripts/_tmp_bilsjekk.ts` og er slettet; det leste `.env.local` selv (Next
+laster den ikke utenfor appen) og skrev aldri ut nøkler eller kundedata.
+Merk at kolonnen i `etterkalkyler` heter `created_at`, ikke `registrert_at` —
+`registrert` er navnet i TypeScript-modellen, ikke i basen.
+
+
+### 48. ⚠️ ÅPENT: malervennen sier tilbudene ikke matcher ekte arbeid — 2026-08-25
+
+**Dette er den første ekte brukertilbakemeldingen i hele prosjektet.** Den har
+vært etterlyst i dette dokumentet siden 15. august («funnene fra den testen er
+ikke fanget opp noe sted»). Nå er den her, og den er ikke liten.
+
+Han gikk gjennom appen og fant flere feil med samme rot: **tilbudene beskriver
+ikke jobben som faktisk skal utføres.** Ordrett: «kan ikke bare være gulv eller
+tak, men også vegger og andre ting som samsvarer med ekte arbeid som skal
+gjennomføres».
+
+To ting ligger i det, og bare den ene er løst.
+
+#### Del 1 — flatene henger nå sammen (løst samme dag)
+
+At en jobb er gulv ELLER tak, og ikke gulv OG tak OG vegg, er nettopp det punkt
+47 rettet: målene ligger på jobben, og alle fire flatene kommer fra dem. Han så
+appen før den endringen. Verdt å la ham se den på nytt før noe mer bygges — det
+kan hende halve innvendingen allerede er borte.
+
+#### Del 2 — arbeidet rundt arbeidet (ÅPENT, og det største hullet i modellen)
+
+Den andre halvdelen står igjen, og den er mer alvorlig enn den høres ut.
+
+**Modellen kan bare prise arbeid som skalerer med en målt mengde.** Alle sju
+operasjonene hos maleren er `antall × timerPerEnhet`. Men en malers dag er ikke
+bare maling: tildekking, maskering, vask av flater, flikking, grunning,
+opprydding og avfall er ekte timer som **ikke har en eneste linje i appen i
+dag**.
+
+Konsekvensen er todelt, og begge deler er alvorlige:
+
+1. **Prisen blir for lav.** Timene finnes i virkeligheten, men ikke i
+   regnestykket. Det er samme feilform som saken som startet hele
+   ombyggingen — bare med motsatt fortegn, og dermed vanskeligere å oppdage:
+   et for dyrt tilbud mister man, et for billig tilbud får man.
+2. **Tilbudsteksten beskriver ikke det kunden kjøper.** «Male vegger, 45 m²
+   veggflate» er ikke det håndverkeren skal gjøre på mandag. Kunden signerer
+   noe annet enn det som skjer.
+
+Merk at rigg og opprydding i stor grad er **per rom, ikke per m²** — en
+enhet modellen ikke har. `Enhet` mangler `rom`, og det er ikke en tekstendring:
+det er en ny dimensjon i utregningen.
+
+#### Hva som IKKE er gjort, og hvorfor
+
+Jeg har ikke lagt inn operasjonene. Å finne på timetall for tildekking og
+maskering ville vært nøyaktig det punkt 44 slo fast at man ikke skal gjøre:
+dikte. Spørsmålet til ham er ikke «hva bør dette koste», men **«hvilke poster
+har du på et ekte tilbud, og hvor lang tid tar hver av dem»**.
+
+**Neste handling:** hent hans faktiske liste. Det er det billigste og mest
+verdifulle innspillet som finnes i prosjektet nå — og det låser opp både denne
+saken og de ni `anslag`-satsene i én samtale.
+
+⚠️ **Merk at dette endrer prioriteringen.** Fase 1 var «få appen brukt én gang».
+Den bør nå leses som «få appen brukt én gang **etter** at postene stemmer» —
+en runde med et tilbud som mangler halve arbeidet, er en runde som bekrefter
+det han allerede har sagt.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -2081,20 +2482,26 @@ måter. Punkt 17 beskriver ekte mobilarbeid (hamburgermeny, header som trengte
 865 px, beløp som brøt i fakturalisten). Og **malervennen har nå brukt appen på
 sin egen telefon.**
 
-⚠️ **Funnene fra den testen er ikke fanget opp noe sted.** Uten dem vet vi at
-den har vært i bruk på mobil, men ikke hva som gikk bra eller dårlig. Det er
-den enkleste tilgjengelige tilbakemeldingen i hele prosjektet, og den ligger
-utenfor dokumentet. Hent den før neste testrunde planlegges.
+~~⚠️ **Funnene fra den testen er ikke fanget opp noe sted.**~~ — **hentet
+2026-08-25, se punkt 48.** Hovedfunnet hans: tilbudene beskriver ikke jobben
+som faktisk skal utføres. Halve innvendingen er rettet (punkt 47), den andre
+halvparten — arbeidet rundt arbeidet — står åpen og er det største hullet i
+modellen.
 
 ## Veikart — i prioritert rekkefølge
 
 1. ~~**Etterkalkyle**~~ — **bygget 2026-08-17/18, se punkt 34 og 35.** Både tid
-   og materialer lærer nå. Gjenstår: kjør `migrations/20260817_etterkalkyle.sql`,
-   og før timer på en ekte jobb. Neste steg i denne retningen er en oversikt
-   over treffsikkerhet over tid — «traff du bedre i august enn i juni».
+   og materialer lærer nå. Gjenstår: før timer på en ekte jobb.
+   ~~Neste steg i denne retningen er en oversikt over treffsikkerhet over tid~~
+   — **bygget 2026-08-25, se punkt 45.** Den står på `/oversikt`, måned for
+   måned, med en sammenligning som først tør si «du har blitt bedre» når det
+   er minst tre jobber på hver side. Sammenligningsvinduet er aldri mer enn
+   halvparten av historikken, så den virker allerede fra to måneder.
 2. ~~**Allowlist** før flere kollegaer inviteres~~ — **bygget 2026-08-17, se
    punkt 33.** Gjenstår: sett `ALLOWED_EMAILS` i Vercel og deploy.
-3. **Mobiltest** — én runde på telefon.
+3. ~~**Mobiltest**~~ — **gjennomført, funnene hentet 2026-08-25, se punkt 48.**
+   Erstattes av: **få postene i tilbudet til å matche ekte arbeid.** Det er nå
+   det som står mellom appen og en ekte jobb.
 4. **Regnskapseksport** til Fiken/Tripletex. Komplementer regnskapsprogrammet,
    ikke konkurrer med det.
 5. **Stripe Connect** før ekte penger fra flere brukere.
@@ -2123,10 +2530,11 @@ utenfor dokumentet. Hent den før neste testrunde planlegges.
    «hva bør dette koste», men «hvor lang tid bruker du på én enhet» — det er
    `timerPerEnhet` modellen regner ut fra. Se `docs/priser.md`.
 
-   **Bilpleie trenger mer enn en sats:** polering og innvendig rens prises per
-   bil, men bilens størrelse er prisvariabelen — 6 timer flatt gjelder ikke
-   både en småbil og en stor SUV. Spør om egne satser per størrelse, ikke bare
-   ett tall. Se punkt 44.
+   ~~**Bilpleie trenger mer enn en sats**~~ — **faget er fjernet 2026-08-25,
+   se punkt 47.** Spørsmålet bortfaller.
+
+   **Listen teller nå ni satser, mot sju før:** maleren fikk fire nye
+   (1 strøk, listverk, dør, vindu) og bilpleiens to gikk ut med faget.
 7. ~~**Sett `ALLOWED_EMAILS` i Vercel**~~ — **gjort 2026-08-20**, se punkt 36.
    Malervennen lagt til 2026-08-22, se punkt 42.
    Verifisert utenfra mot den kjørende appen.
