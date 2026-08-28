@@ -28,6 +28,8 @@ import {
   sjekkSamsvar,
   romTekst,
   komplette,
+  flatenTil,
+  udekkedeFlater,
   DOR_M2,
   VINDU_M2,
   DOR_BREDDE_M,
@@ -774,6 +776,41 @@ sjekk('uten maal er det ingen romtekst', romTekst([{}]) === null)
 sjekk('bare komplette rom lagres', komplette(romListe).length === 2)
 sjekk('tomt skjema lagrer ingen rom', komplette([{}]).length === 0)
 
-const ANTALL = 156
+// 33) Flater som er maalt, men ikke priset. Malervennens innvending i en
+//     konkret form: han maaler rommet, appen regner ut fire tall, og saa kan
+//     tre av dem bli staaende ubrukt uten at noen sier fra. Den glemte flaten
+//     oppdages ellers forst paa befaring, og da er prisen alt gitt.
+const malerOps = FAG.Maler.operasjoner
+const jobbMaal = maalOpp([{ lengde: 4, bredde: 3, hoyde: 2.4 }])!
+
+// Bare vegg er priset: tak og listverk skal foreslaas, gulv ikke -- maleren
+// har ingen gulvoperasjon, og et spoersmaal uten noe aa legge til er stoy.
+const bareVegg = udekkedeFlater(['vegg'], jobbMaal, malerOps)
+sjekk('taket foreslaas naar bare veggen er priset',
+  bareVegg.some((f) => f.flate === 'tak'), bareVegg.map((f) => f.flate).join(', '))
+sjekk('listverket foreslaas ogsaa', bareVegg.some((f) => f.flate === 'listverk'))
+sjekk('gulv foreslaas ikke til en maler', !bareVegg.some((f) => f.flate === 'gulv'))
+
+// Forslaget maa peke paa en operasjon som faktisk finnes, ellers gjor knappen
+// ingenting.
+sjekk('forslaget peker paa en ekte operasjon',
+  bareVegg.every((f) => hentOperasjon('Maler', f.operasjonId) !== undefined))
+sjekk('forslaget baerer mengden fra maalene',
+  bareVegg.find((f) => f.flate === 'tak')!.mengde === 12)
+
+// Er alt priset, skal det ikke staa noe spoersmaal igjen.
+sjekk('ingenting foreslaas naar alt er dekket',
+  udekkedeFlater(['vegg', 'tak', 'gulv', 'listverk'], jobbMaal, malerOps).length === 0)
+
+// m2_flate er tvetydig, og linjas eget flatevalg avgjor hva den spiser. En
+// flislinje paa vegg dekker veggen, ikke gulvet.
+sjekk('flatevalget avgjor hva linja dekker',
+  flatenTil('m2_flate', 'vegg') === 'vegg' && flatenTil('m2_flate', 'gulv') === 'gulv')
+sjekk('entydige enheter trenger ikke flatevalg',
+  flatenTil('m2_tak') === 'tak' && flatenTil('lopemeter') === 'listverk')
+sjekk('punkt og stk spiser ingen flate',
+  flatenTil('punkt') === null && flatenTil('stk') === null)
+
+const ANTALL = 165
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

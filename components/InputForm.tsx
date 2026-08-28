@@ -25,6 +25,9 @@ import {
   fagBrukerRom,
   utregning,
   sjekkSamsvar,
+  flatenTil,
+  udekkedeFlater,
+  standardFlateFor,
   FLATE_VALG,
   type Flate,
   type Rom,
@@ -104,19 +107,8 @@ function nyLinje(
     // En jobbmal med fast antall (ett bad, ett sikringsskap) skal ikke få
     // mengden sin overstyrt av et rom.
     fraRom: antall === undefined && kommerFraRom(valgt.enhet),
-    flate: standardFlate(valgt.id),
+    flate: standardFlateFor(valgt.id),
   }
-}
-
-/**
- * Hvilken flate en `m2_flate`-operasjon gjelder som standard.
- *
- * Membran legges på gulv, sparkling på vegg, flis på begge — der er gulv det
- * vanligste. Gjettingen er bare et utgangspunkt; valget står synlig på linja.
- */
-function standardFlate(operasjonId: string): Flate {
-  if (operasjonId === 'maler_sparkling') return 'vegg'
-  return 'gulv'
 }
 
 export default function InputForm({ onSubmit, loading, error, satser, standard }: InputFormProps) {
@@ -282,7 +274,7 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
           // Den nye enheten avgjør om rommet i det hele tatt kan fylle linja. Et
           // sikringsskap telles; det finnes ikke i kvadratmeter.
           oppdatert.fraRom = nyOp ? kommerFraRom(nyOp.enhet) && l.fraRom : false
-          oppdatert.flate = standardFlate(endring.operasjonId)
+          oppdatert.flate = standardFlateFor(endring.operasjonId)
         }
         return oppdatert
       })
@@ -318,6 +310,26 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
     return sjekkSamsvar(manuell('m2_gulv'), manuell('m2_tak'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linjer, jobbType, maal])
+
+  /**
+   * Flater han har målt, men ikke lagt en linje på.
+   *
+   * Han måler rommet, appen regner ut fire tall — og så kan tre av dem bli
+   * stående ubrukt uten at noen sier fra. Det er ikke nødvendigvis feil, men
+   * det er verdt ett spørsmål: den glemte flaten oppdages ellers først på
+   * befaring, og da er prisen allerede gitt.
+   */
+  const udekket = useMemo(() => {
+    if (!maal || !visRom) return []
+    const dekket = linjer
+      .map((l) => {
+        const op = hentOperasjon(jobbType, l.operasjonId)
+        return op ? flatenTil(op.enhet, l.flate) : null
+      })
+      .filter((f): f is NonNullable<typeof f> => f !== null)
+    return udekkedeFlater(dekket, maal, fag.operasjoner)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linjer, jobbType, maal, visRom])
 
   /**
    * Én boks per ULIK advarsel, ikke én per linje.
@@ -593,6 +605,30 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
           )
         })}
       </div>
+
+      {udekket.length > 0 && (
+        <div className="rounded-md border-2 border-blue/20 bg-blue/5 p-4">
+          <p className="font-bold mb-1">Du har målt opp mer enn du har priset</p>
+          <p className="text-sm text-black/60 mb-3">
+            Skal noe av dette med i tilbudet? Er det ikke avtalt, hopper du bare over.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {udekket.map((f) => (
+              <button
+                key={f.flate}
+                type="button"
+                onClick={() => setLinjer((forrige) => [...forrige, nyLinje(jobbType, satser, f.operasjonId)])}
+                className="rounded-md border-2 border-blue/30 bg-white px-3 py-2 text-sm font-bold text-blue hover:bg-blue/10 transition-colors text-left"
+              >
+                + {f.operasjonNavn}
+                <span className="block font-medium text-black/50">
+                  {f.mengde.toLocaleString('nb-NO')} {f.enhetstekst} {f.navn}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {samsvarsvarsel && (
         <p className="text-sm text-amber-800 bg-amber-50 border-2 border-amber-300 rounded-md px-4 py-3 font-medium">

@@ -2505,6 +2505,48 @@ navngitt nå, men tildekking, maskering, vask og opprydding har fremdeles ingen
 linje. Det venter på malervennens liste.
 
 
+### 50. Appen målte flater den aldri spurte om skulle med — 2026-08-25
+
+Én konkret form av malervennens innvending (punkt 48), og den kunne rettes uten
+å vente på tallene hans: håndverkeren måler rommet, appen regner ut fire tall —
+gulv, tak, vegg, listverk — og så kan tre av dem bli stående ubrukt **uten at
+noen sier fra.** Den glemte flaten oppdages først på befaring, og da er prisen
+allerede gitt.
+
+Nå står det under linjene:
+
+> **Du har målt opp mer enn du har priset**
+> Skal noe av dette med i tilbudet? Er det ikke avtalt, hopper du bare over.
+> `+ Male tak, 2 strøk — 12 m² tak`  `+ Male listverk og karmer — 14 løpemeter listverk`
+
+Ett klikk legger inn linja, ferdig utfylt fra målene.
+
+**Et spørsmål, ikke et varsel.** Appen vet ikke hva som er avtalt — mange jobber
+er bare vegger — og et varsel om noe som er helt i orden lærer folk å overse
+varsler. Fag uten en operasjon for flaten hoppes over: en maler har ingen
+gulvoperasjon, og «skal gulvet med?» uten noe å legge til er et spørsmål uten
+svar.
+
+#### Testen fant en ekte feil før den rakk å bli en bug
+
+Første versjon tilbød **sparkling som «legg til gulv» til en maler.** Årsaken var
+lærerik: `m2_flate` er tvetydig, og hvilken flate operasjonen hører til som
+standard lå i `standardFlate()` **inne i skjemaet**. `udekkedeFlater` i lib
+kjente ikke til den og antok gulv for alle `m2_flate`-operasjoner.
+
+To steder som måtte være enige om samme spørsmål, og bare det ene visste svaret
+— nøyaktig feilformen gjennomgangen i punkt 43 kalte «par som kommer i utakt».
+`standardFlateFor` bor nå i [lib/mengde.ts](lib/mengde.ts), og skjemaet henter
+den derfra.
+
+165 tester (9 nye), tsc rent, bygg grønt.
+
+⚠️ Fortsatt åpent, og fortsatt det største: **arbeidet rundt arbeidet.**
+Tildekking, maskering, vask og opprydding har ingen linje. Det er ikke en flate
+som kan telles opp fra rommålene — det er timer som mangler i modellen, og de
+venter på malervennens liste. Se punkt 48.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |

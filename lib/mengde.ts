@@ -273,3 +273,121 @@ export function romTekst(rom: Rom[]): string | null {
 export function komplette(rom: Rom[]): Rom[] {
   return rom.filter((r) => tall(r.lengde) !== null && tall(r.bredde) !== null)
 }
+
+// ---------------------------------------------------------------------------
+// Flater som er maalt, men ikke priset
+// ---------------------------------------------------------------------------
+
+/** De fire tallene et rom gir. `Flate` er de tre som `m2_flate` kan peke paa. */
+export type Maalflate = 'gulv' | 'tak' | 'vegg' | 'listverk'
+
+const FLATENAVN: Record<Maalflate, string> = {
+  gulv: 'gulv',
+  tak: 'tak',
+  vegg: 'vegg',
+  listverk: 'listverk',
+}
+
+/**
+ * Hvilken flate en `m2_flate`-operasjon gjelder som standard.
+ *
+ * Membran legges på gulv, sparkling på vegg, flis på begge — der er gulv det
+ * vanligste. Gjettingen er bare et utgangspunkt; håndverkeren ser og endrer
+ * valget på linja.
+ *
+ * Den lå tidligere i skjemaet alene, og det var en ekte feil: `udekkedeFlater`
+ * antok gulv for alle `m2_flate`-operasjoner, og tilbød dermed sparkling som
+ * «legg til gulv» til en maler — som ikke legger gulv. To steder som måtte
+ * være enige om samme spørsmål, og bare det ene visste svaret.
+ */
+export function standardFlateFor(operasjonId: string): Flate {
+  if (operasjonId === 'maler_sparkling') return 'vegg'
+  return 'gulv'
+}
+
+/**
+ * Hvilket av rommets fire tall en linje spiser.
+ *
+ * `m2_flate` er tvetydig og avgjøres av linjas eget flatevalg — en flislinje
+ * på vegg dekker veggen, ikke gulvet.
+ */
+export function flatenTil(enhet: Enhet, flate: Flate = 'gulv'): Maalflate | null {
+  switch (enhet) {
+    case 'm2_gulv':
+      return 'gulv'
+    case 'm2_tak':
+      return 'tak'
+    case 'm2_vegg':
+      return 'vegg'
+    case 'm2_flate':
+      return flate
+    case 'lopemeter':
+      return 'listverk'
+    default:
+      return null
+  }
+}
+
+function mengdenTil(flate: Maalflate, maal: Flatemaal): number {
+  return flate === 'gulv'
+    ? maal.gulvM2
+    : flate === 'tak'
+      ? maal.takM2
+      : flate === 'vegg'
+        ? maal.veggM2
+        : maal.listverkLm
+}
+
+export interface UdekketFlate {
+  flate: Maalflate
+  navn: string
+  mengde: number
+  enhetstekst: string
+  /** Operasjonen som ville dekket den — fagets første med riktig enhet. */
+  operasjonId: string
+  operasjonNavn: string
+}
+
+const REKKEFOLGE: Maalflate[] = ['vegg', 'tak', 'gulv', 'listverk']
+
+/**
+ * Flater håndverkeren har målt opp, men ikke lagt en linje på.
+ *
+ * Malervennens innvending var at tilbudene ikke beskriver jobben som faktisk
+ * skal utføres. Én konkret form av det: han måler rommet, appen regner ut fire
+ * tall — og så står tre av dem ubrukt uten at noen sier fra. Det er ikke
+ * nødvendigvis feil (mange jobber er bare vegger), men det er verdt ett
+ * spørsmål, for den glemte flaten oppdages ellers først på befaring.
+ *
+ * Derfor et SPØRSMÅL og ikke et varsel: appen vet ikke hva som er avtalt, og
+ * et varsel om noe som er helt i orden lærer folk å overse varsler.
+ *
+ * Fag uten en operasjon for flaten hoppes over — en maler har ingen
+ * gulvoperasjon, og å spørre «skal gulvet med?» uten noe å legge til ville
+ * vært et spørsmål uten svar.
+ */
+export function udekkedeFlater(
+  dekket: Maalflate[],
+  maal: Flatemaal,
+  operasjoner: { id: string; navn: string; enhet: Enhet }[]
+): UdekketFlate[] {
+  const brukt = new Set(dekket)
+
+  return REKKEFOLGE.filter((flate) => !brukt.has(flate) && mengdenTil(flate, maal) > 0)
+    .map((flate) => {
+      // Fagets første operasjon som treffer flaten. `m2_flate` avgjøres av sin
+      // egen standardflate — uten det ble sparkling tilbudt som «legg til
+      // gulv» til en maler, som ikke legger gulv.
+      const op = operasjoner.find((o) => flatenTil(o.enhet, standardFlateFor(o.id)) === flate)
+      if (!op) return null
+      return {
+        flate,
+        navn: FLATENAVN[flate],
+        mengde: mengdenTil(flate, maal),
+        enhetstekst: flate === 'listverk' ? 'løpemeter' : 'm²',
+        operasjonId: op.id,
+        operasjonNavn: op.navn,
+      }
+    })
+    .filter((f): f is UdekketFlate => f !== null)
+}
