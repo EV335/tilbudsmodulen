@@ -2374,11 +2374,10 @@ fallet.**
 
 ⚠️ **To ting dette avdekket, som ikke handler om bilpleie:**
 
-1. **Basen er så godt som tom.** Ett tilbud, null registrerte timer. Punkt 24
-   beskriver en full produksjonsflyt, og punkt 42 at malervennen er lagt til —
-   men det finnes ikke spor av det her. Enten er tilbudene slettet underveis,
-   eller så peker Vercel på et ANNET Supabase-prosjekt enn `.env.local` gjør.
-   Det siste er verdt å avklare før noen stoler på tall fra basen.
+1. ~~**Basen er så godt som tom.**~~ — **for hardt sagt, rettet i punkt 52.**
+   `tilbud` har én rad, men `invoices` har seks og `payments` fire
+   gjennomførte. Pengeløypa ER testet; det er tilbudsløypa som aldri er gått.
+   Og Vercel viste seg å bruke samme Supabase-prosjekt som `.env.local`.
 2. **Oversikten fra punkt 45 vil stå tom.** Uten registrerte timer har
    «Treffsikkerhet over tid» ingenting å vise, og «Neste steg» bare det ene
    tilbudet. Sida er ikke ødelagt — den viser tomtilstandene sine — men den kan
@@ -2584,6 +2583,55 @@ en maler. Regnestykket kom ut paa 10 198 kr for 7,8 timer.
 `.next-build/static/css/*.css` i `public/`, og aapne den via dev-serveren.
 `file://` gaar ikke — nettleserverktoeyet rendrer filer utenfor prosjektet som
 statiske snapshots, og uten `process`-shimmen kraesjer React-bunten.
+
+
+### 52. Vercel bruker samme base — og «appen er ubrukt» var feil — 2026-08-25
+
+To spørsmål avklart uten Vercel-tilgang, ved å bruke at den offentlige
+faktura-ruta ikke krever innlogging: et `public_token` fra den lokale basen ble
+sendt til den deployede appen. Gjenkjenner den fakturaen, leser den samme base.
+
+| Adresse | Svar |
+|---|---|
+| `tilbudsmodulen-ev335s-projects.vercel.app` | 200, **gjenkjente fakturaen** — samme Supabase-prosjekt som `.env.local` |
+| `tilbudsmodulen.vercel.app` | 404 på rota — den adressen er ikke appen |
+
+**Produksjon og lokalt deler database.** Uklarheten fra punkt 45 er borte, og
+tallene jeg leser lokalt ER produksjonstallene.
+
+#### Rettelse: påstanden om at appen er ubrukt var for hard
+
+Punkt 45 og 47 sa «basen er så godt som tom». Det bygget på `tilbud`-tabellen
+alene. Full opptelling:
+
+| Tabell | Rader |
+|---|---|
+| `users` | 3 |
+| `firma` | 2 |
+| `customers` | 3 |
+| **`invoices`** | **6** |
+| **`payments`** | **4 succeeded** |
+| `tilbud` | 1 |
+| `etterkalkyler` | 0 |
+
+**Pengeløypa er faktisk testet.** Seks fakturaer fra 9.–12. august, fire
+gjennomførte Stripe-betalinger på 1 500–3 000 kr, én på 10 000 kr med 25 % mva
+som fortsatt står `pending`. Det stemmer med punkt 14 og 22.
+
+**Men samtlige seks fakturaer har `tilbud_id = null`.** De er laget for hånd, ikke
+fra et beregnet tilbud. Det ene tilbudet som finnes er fra 13. august og har
+aldri blitt fakturert.
+
+#### Det skarpe funnet
+
+Betalingsmaskineriet har bevis. **Prisingen — som er selve produktet — har
+det ikke.** Ingen har noen gang gått hele veien tilbud → faktura, og ingen har
+ført en time. Det er ikke «appen er ubrukt»; det er at den halvdelen som er
+verifisert, er den halvdelen som er lettest å kjøpe ferdig andre steder.
+
+Konsekvens for oversikten fra punkt 45: den vil faktisk vise noe — utestående,
+betalt, seks fakturaer. Det er «Treffsikkerhet over tid» og «Siste tilbud» som
+står tomme, og de står tomme fordi løypa de måler aldri er gått.
 
 
 ## Modenhet — ærlig vurdering per 2026-08-13
