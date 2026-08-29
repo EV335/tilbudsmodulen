@@ -20,6 +20,23 @@ export function formatKr(beløp: number): string {
   return harOre ? `kr ${tall}` : `kr ${tall},-`
 }
 
+/**
+ * Et TALL for norske øyne — ikke et beløp.
+ *
+ * Het tidligere formatKr inne i lib/ai.ts, som er navnet på pengeformatereren
+ * her. To ulike funksjoner med samme navn inviterer til at noen «rydder opp»
+ * ved å bytte inn feil av dem, og da får kunden «kr kr 10 167,-,-». Den bor nå
+ * her sammen med formatKr, med et navn som skiller dem.
+ *
+ * Alt som viser et desimaltall til en nordmann skal gjennom denne. Uten den
+ * blir det «30.3 m²» og «4.55 t» — engelske tall i et norsk skjema, rett ved
+ * siden av «30,3 fra målene over» som er riktig. Det er verre enn å bomme
+ * konsekvent.
+ */
+export function formatTall(n: number): string {
+  return n.toLocaleString('nb-NO')
+}
+
 export function formatDato(iso: string): string {
   return new Date(iso).toLocaleDateString('nb-NO')
 }

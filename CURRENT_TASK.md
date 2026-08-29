@@ -2547,6 +2547,45 @@ som kan telles opp fra rommålene — det er timer som mangler i modellen, og de
 venter på malervennens liste. Se punkt 48.
 
 
+### 51. Skjemaet kjort for forste gang — to feil funnet — 2026-08-25
+
+Innlogging er fortsatt ikke mulig for meg, saa skjemaet ble buntet med esbuild
+til en frittstaaende, INTERAKTIV kopi (`public/vis/`, utenfor git) og kjort i
+nettleseren. `InputForm` bruker ikke `useSession` — bare sida rundt den — saa
+den kjorer helt fint alene. Foerste gang noen har sett den nye versjonen i drift.
+
+**Alt virket:** jobbmalen fylte to linjer, rommaalene ga gulv 13 m², tak 13 m²,
+vegg 30,3 m² og listverk 13,7 lm, begge linjene sto med «fra maalene over»,
+listverket ble tilbudt som udekket flate — og gulv ble korrekt ikke tilbudt til
+en maler. Regnestykket kom ut paa 10 198 kr for 7,8 timer.
+
+**To ekte feil, begge slike vennen ville truffet med en gang:**
+
+1. **Engelske tall i et norsk skjema.** «30.3 m²», «0.15 t», «4.55 t»,
+   «33.3 % paaslag» — punktum i stedet for komma, over hele skjemaet. Verst:
+   det sto rett ved siden av «30,3 fra maalene over», som var riktig. Aa bomme
+   inkonsekvent paa samme skjerm er verre enn aa bomme konsekvent.
+
+   Samme feilform som «kr 12 033,25,-» (punkt 39) og «8.01 timer» (punkt 49):
+   et tall som gaar rett ut i et strengliteral uten aa bli formatert. `formatTall`
+   laa privat i `lib/ai.ts`; den bor naa i `lib/format.ts` ved siden av
+   `formatKr`, og brukes av skjemaet, mengdeutregningen og tilbudsteksten.
+
+2. **En hjelpetekst som pekte paa en knapp som ikke finnes.** `maler_vegg` sa
+   «trykk «Regn ut fra romstoerrelse»» — kontrollen fra punkt 46, fjernet i
+   punkt 47 da maalene flyttet til jobben. En hjelpetekst som viser til noe
+   brukeren ikke finner, er verre enn ingen hjelpetekst.
+
+165 tester, tsc rent, bygg groent.
+
+**Slik gjentas det** (verdt aa ha): bunt en entry som mounter komponenten med
+`npx esbuild <entry>.tsx --bundle --jsx=automatic
+--banner:js='window.process={env:{NODE_ENV:"production"}};'`, legg bunten og
+`.next-build/static/css/*.css` i `public/`, og aapne den via dev-serveren.
+`file://` gaar ikke — nettleserverktoeyet rendrer filer utenfor prosjektet som
+statiske snapshots, og uten `process`-shimmen kraesjer React-bunten.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |

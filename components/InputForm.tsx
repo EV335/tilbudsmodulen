@@ -33,6 +33,7 @@ import {
   type Rom,
 } from '@/lib/mengde'
 import { tilTall, tilFeltTekst } from '@/lib/tall'
+import { formatTall } from '@/lib/format'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
@@ -409,7 +410,7 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
           />
           {(tilTall(margin) ?? -1) > 0 && (tilTall(margin) ?? -1) < 100 && (
             <p className="mt-2 text-sm text-slate-600">
-              Tilsvarer <strong>{marginSomPaaslag(tilTall(margin) ?? -1)} % påslag</strong> på kostnaden.
+              Tilsvarer <strong>{formatTall(marginSomPaaslag(tilTall(margin) ?? -1))} % påslag</strong> på kostnaden.
             </p>
           )}
         </div>
@@ -489,10 +490,10 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
           {maal && (
             <div className="rounded-md border-2 border-blue/20 bg-blue/5 p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Flatetall etikett="Gulv" verdi={`${maal.gulvM2} m²`} />
-                <Flatetall etikett="Tak" verdi={`${maal.takM2} m²`} />
-                <Flatetall etikett="Vegg" verdi={`${maal.veggM2} m²`} />
-                <Flatetall etikett="Listverk" verdi={`${maal.listverkLm} lm`} />
+                <Flatetall etikett="Gulv" verdi={`${formatTall(maal.gulvM2)} m²`} />
+                <Flatetall etikett="Tak" verdi={`${formatTall(maal.takM2)} m²`} />
+                <Flatetall etikett="Vegg" verdi={`${formatTall(maal.veggM2)} m²`} />
+                <Flatetall etikett="Listverk" verdi={`${formatTall(maal.listverkLm)} lm`} />
               </div>
               <div className="mt-3 space-y-1">
                 {utregning(romVerdier, maal).map((linje) => (
@@ -542,7 +543,7 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
                       </div>
                       <div className="rounded-md border-2 border-blue/20 bg-blue/5 px-4 py-3">
                         <span className="text-lg font-black">
-                          {(romMengde ?? 0).toLocaleString('nb-NO')}
+                          {formatTall(romMengde ?? 0)}
                         </span>{' '}
                         <span className="text-sm text-black/60">fra målene over</span>
                       </div>
@@ -622,7 +623,7 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
               >
                 + {f.operasjonNavn}
                 <span className="block font-medium text-black/50">
-                  {f.mengde.toLocaleString('nb-NO')} {f.enhetstekst} {f.navn}
+                  {formatTall(f.mengde)} {f.enhetstekst} {f.navn}
                 </span>
               </button>
             ))}
@@ -641,19 +642,19 @@ export default function InputForm({ onSubmit, loading, error, satser, standard }
           <h3 className="font-semibold text-slate-900">Regnestykket</h3>
           {forhandsvisning.linjer.map((l, i) => (
             <p key={`${l.operasjonId}-${i}`} className="text-sm text-slate-700">
-              {l.navn}: {l.antall} {l.enhetstekst} × {l.timerPerEnhet} t = {l.timer} t × {(tilTall(timepris) ?? 0).toLocaleString('nb-NO')} kr
+              {l.navn}: {formatTall(l.antall)} {l.enhetstekst} × {formatTall(l.timerPerEnhet)} t = {formatTall(l.timer)} t × {formatTall(tilTall(timepris) ?? 0)} kr
               {' + '}
-              {l.materialKr.toLocaleString('nb-NO')} kr materialer → <strong>{l.prisKr.toLocaleString('nb-NO')} kr</strong>
-              {' '}({l.prisPerEnhet.toLocaleString('nb-NO')} kr per {l.enhetstekstEntall})
+              {formatTall(l.materialKr)} kr materialer → <strong>{formatTall(l.prisKr)} kr</strong>
+              {' '}({formatTall(l.prisPerEnhet)} kr per {l.enhetstekstEntall})
             </p>
           ))}
           <p className="text-sm text-slate-700 pt-2 border-t border-slate-300">
-            Arbeid {forhandsvisning.arbeidKr.toLocaleString('nb-NO')} kr + materialer{' '}
-            {forhandsvisning.materialKr.toLocaleString('nb-NO')} kr + margin{' '}
-            {forhandsvisning.marginKr.toLocaleString('nb-NO')} kr
+            Arbeid {formatTall(forhandsvisning.arbeidKr)} kr + materialer{' '}
+            {formatTall(forhandsvisning.materialKr)} kr + margin{' '}
+            {formatTall(forhandsvisning.marginKr)} kr
           </p>
           <p className="text-lg font-bold text-slate-900">
-            Sum: kr {forhandsvisning.prisKr.toLocaleString('nb-NO')},- for {forhandsvisning.timer} timer
+            Sum: kr {formatTall(forhandsvisning.prisKr)},- for {formatTall(forhandsvisning.timer)} timer
           </p>
           {samledeAdvarsler.map((advarsel) => (
             <p

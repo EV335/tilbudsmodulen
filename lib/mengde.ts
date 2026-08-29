@@ -15,6 +15,7 @@
 // framtidig serverside bruker nøyaktig samme tall.
 
 import type { Enhet } from '@/lib/priser'
+import { formatTall } from '@/lib/format'
 
 /**
  * Ett rom, slik håndverkeren måler det.
@@ -183,8 +184,8 @@ export function utregning(rom: Rom[], maal: Flatemaal): string[] {
 
   linjer.push(
     flere
-      ? `${maal.rom} rom: ${maal.gulvM2} m² gulv, og like mye tak.`
-      : `Gulv og tak: ${maal.gulvM2} m² hver.`
+      ? `${maal.rom} rom: ${formatTall(maal.gulvM2)} m² gulv, og like mye tak.`
+      : `Gulv og tak: ${formatTall(maal.gulvM2)} m² hver.`
   )
 
   if (maal.veggM2 > 0) {
@@ -193,14 +194,14 @@ export function utregning(rom: Rom[], maal: Flatemaal): string[] {
     const fradrag = rundEn(dorer * DOR_M2 + vinduer * VINDU_M2)
     linjer.push(
       fradrag > 0
-        ? `Vegg: ${maal.veggM2} m², etter fradrag på ${fradrag} m² for ${dorer} dør${
+        ? `Vegg: ${formatTall(maal.veggM2)} m², etter fradrag på ${formatTall(fradrag)} m² for ${dorer} dør${
             dorer === 1 ? '' : 'er'
           } og ${vinduer} vindu${vinduer === 1 ? '' : 'er'}.`
-        : `Vegg: ${maal.veggM2} m².`
+        : `Vegg: ${formatTall(maal.veggM2)} m².`
     )
   }
 
-  linjer.push(`Listverk: ${maal.listverkLm} løpemeter rundt.`)
+  linjer.push(`Listverk: ${formatTall(maal.listverkLm)} løpemeter rundt.`)
 
   if (maal.romUtenHoyde > 0) {
     linjer.push(
@@ -228,14 +229,7 @@ export function sjekkSamsvar(gulvM2: number | null, takM2: number | null): strin
   if (gulvM2 === null || takM2 === null || gulvM2 <= 0 || takM2 <= 0) return null
   const avvik = Math.abs(takM2 - gulvM2) / gulvM2
   if (avvik <= 0.1) return null
-  return `Du har ført ${gulvM2} m² gulv og ${takM2} m² tak. I et rom er de like store — sjekk tallene, med mindre taket er skrått eller innkasset.`
-}
-
-// Teksten gaar rett ut i tilbudet kunden leser, saa tallene maa vaere norske.
-// «4.2 × 3.1 m» er ikke et norsk maal — og denne kodebasen har traadt i den
-// fella foer, med «kr 12 033,25,-» paa en ekte faktura.
-function nb(n: number): string {
-  return n.toLocaleString('nb-NO')
+  return `Du har ført ${formatTall(gulvM2)} m² gulv og ${formatTall(takM2)} m² tak. I et rom er de like store — sjekk tallene, med mindre taket er skrått eller innkasset.`
 }
 
 /**
@@ -256,8 +250,8 @@ export function romTekst(rom: Rom[]): string | null {
     .map((r, i) => {
       const navn = r.navn?.trim() || `Rom ${i + 1}`
       const hoyde = tall(r.hoyde)
-      const maal = `${nb(r.lengde!)} × ${nb(r.bredde!)} m${
-        hoyde !== null ? `, takhøyde ${nb(hoyde)} m` : ''
+      const maal = `${formatTall(r.lengde!)} × ${formatTall(r.bredde!)} m${
+        hoyde !== null ? `, takhøyde ${formatTall(hoyde)} m` : ''
       }`
       return `${navn} (${maal})`
     })

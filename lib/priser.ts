@@ -116,8 +116,12 @@ export const FAG: Record<string, Fag> = {
         markedLav: 140,
         markedHoy: 280,
         kilde: 'marked',
+        // Hjelpeteksten pekte tidligere paa en knapp som ikke finnes lenger
+        // («Regn ut fra romstoerrelse» laa per linje foer maalene flyttet til
+        // jobben). En hjelpetekst som viser til en kontroll brukeren ikke
+        // finner, er verre enn ingen hjelpetekst.
         hjelpetekst:
-          'Veggflate, ikke gulvflate. Har du rommålene i stedet, trykk «Regn ut fra romstørrelse» — da slipper du å regne om selv.',
+          'Veggflate, ikke gulvflate — den regnes ut av rommålene over, etter fradrag for dører og vinduer.',
       },
       {
         id: 'maler_tak',

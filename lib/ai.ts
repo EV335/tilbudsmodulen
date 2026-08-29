@@ -6,6 +6,7 @@ import {
   TilbudLinjeInput,
 } from '@/lib/priser'
 import { romTekst, type Rom } from '@/lib/mengde'
+import { formatTall } from '@/lib/format'
 
 export interface TilbudInput {
   jobbType: string
@@ -66,14 +67,6 @@ Regler:
 - Gjenta prisen nøyaktig slik den er oppgitt. Ikke rund av, ikke juster, ikke foreslå noe annet tall.
 - Ikke finn på tillegg, rabatter eller forbehold som ikke følger av det du har fått.
 - Skriv kort og profesjonelt. Ingen fyllord, ingen overtalelse.`
-
-// Formaterer TALLET, ikke beløpet — «kr» og «,-» settes av malene under.
-// Het tidligere formatKr, som er navnet på pengeformatereren i lib/format.ts.
-// To ulike funksjoner med samme navn inviterer til at noen «rydder opp» ved å
-// bytte inn feil av dem, og da får kunden «kr kr 10 167,-,-».
-function formatTall(n: number): string {
-  return n.toLocaleString('nb-NO')
-}
 
 function linjeTekst(l: BeregnetLinje): string {
   return `- ${l.navn}: ${formatTall(l.antall)} ${l.enhetstekst} — kr ${formatTall(l.prisKr)},-`
