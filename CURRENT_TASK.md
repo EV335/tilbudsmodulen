@@ -2614,9 +2614,37 @@ alene. Full opptelling:
 | `tilbud` | 1 |
 | `etterkalkyler` | 0 |
 
-**Pengeløypa er faktisk testet.** Seks fakturaer fra 9.–12. august, fire
-gjennomførte Stripe-betalinger på 1 500–3 000 kr, én på 10 000 kr med 25 % mva
-som fortsatt står `pending`. Det stemmer med punkt 14 og 22.
+**Pengeløypa er faktisk testet** — men med testpenger. Seks fakturaer fra
+9.–12. august og fire gjennomførte Stripe-betalinger på 1 500–3 000 kr. Det
+stemmer med punkt 14 og 22.
+
+⚠️ **Rettelse, samme dag:** disse ble først beskrevet som «ekte
+Stripe-betalinger». Det er feil. Slått opp mot Stripe-API-et:
+`livemode=false` på begge betalingene som lot seg slå opp, og
+`STRIPE_SECRET_KEY` i `.env.local` er en **test-nøkkel**. Kunderegisteret består
+av «Test Testesen», «Test Bedrift AS» og «Mva Testkunde AS», to av dem med
+eierens egen gmail som adresse.
+
+**Ingen ekte penger har noen gang gått gjennom appen.** Mekanismen er verifisert
+ende til ende; transaksjonene er det ikke. Å gå live krever dessuten live-nøkler
+i Vercel — et steg ingen har tatt — i tillegg til Stripe Connect (punkt om
+modenhet).
+
+#### Fakturaen på 10 000 kr
+
+Den som sto `pending`: opprettet 12.08 kl. 15:03, sist endret 15:07. Kunde «Mva
+Testkunde AS» på `riktig-adresse@example.com`. PaymentIntent står på
+`requires_payment_method` — betalingsskjemaet ble åpnet og forlatt, aldri
+fullført. Ingen PDF lagret, ingen betalingsrad. Det er mva-testen fra dagen
+etter `20260811_mva.sql`, ikke en ekte utestående faktura.
+
+Den har forfallsdato 26.08 og er dermed **forfalt**. Det betyr at oversikten fra
+punkt 45 vil vise «1 forfalt» og et rødt nøkkeltall for en oppdiktet kunde.
+
+⚠️ **Testdataen bør ryddes før den ekte runden.** Seks fakturaer, tre kunder og
+fire betalinger som alle er fiktive, gjør at det første ekte tallet drukner —
+og oversikten kan ikke leses på et blikk slik den er ment. Ikke gjort: det er
+sletting av produksjonsdata, og den avgjørelsen er eierens.
 
 **Men samtlige seks fakturaer har `tilbud_id = null`.** De er laget for hånd, ikke
 fra et beregnet tilbud. Det ene tilbudet som finnes er fra 13. august og har
