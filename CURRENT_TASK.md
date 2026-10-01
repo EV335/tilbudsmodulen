@@ -2662,6 +2662,66 @@ betalt, seks fakturaer. Det er «Treffsikkerhet over tid» og «Siste tilbud» s
 står tomme, og de står tomme fordi løypa de måler aldri er gått.
 
 
+### 53. Supabase-prosjektet er borte — og et oppsettskript — 2026-10-01
+
+Fem uker uten aktivitet. Ved gjennomgang 1. oktober:
+
+```
+zculzyarnamvrmmhibhn.supabase.co  ->  Non-existent domain
+/api/public/invoices/<uuid>       ->  500  (fra Vercel)
+```
+
+**Ikke pauset — borte.** Et pauset prosjekt svarer fortsatt på DNS. Navnet
+finnes ikke, og det bekreftes uavhengig fra Vercels nettverk: alt som rører
+databasen svarer 500 i produksjon. Forsiden lastes fortsatt, fordi den er
+statisk — så appen *ser* levende ut utenfra mens ingenting virker.
+
+Tapt data: seks fakturaer, tre kunder, fire testbetalinger, ett tilbud. Alt var
+testdata (se punkt 52), så det eneste reelle tapet er det ene tilbudet fra
+13. august. Ryddejobben fra punkt 52 løste seg selv.
+
+**Andre funn samme dag:**
+
+| | |
+|---|---|
+| `tilbudsmaskinen.no` | peker på 185.134.245.113, nameservere `ns1.hyp.net` — **Domeneshop, ikke Vercel**. Svarer kun på HTTP |
+| PR-en fra august | **aldri merget.** `oversikt-og-rommaal` ligger 8 commiter foran `master` — produksjon kjører den gamle versjonen |
+| Stripe | fortsatt test-nøkkel |
+
+#### `scripts/oppsett.ts`
+
+Å sette opp på nytt betyr åtte SQL-filer i riktig rekkefølge, og for hånd i SQL
+Editor er det åtte sjanser til å hoppe over én. Skriptet kjører dem i
+datorekkefølge mot Management API-et.
+
+```
+npm run oppsett -- --tort                 se hva som ville blitt kjørt
+npm run oppsett -- --prosjekt=<ref>       kjør mot et nytt prosjekt
+npm run oppsett -- --kun-migrasjoner      hopp over schema.sql
+```
+
+Tre valg verdt å kjenne:
+
+1. **Management API, ikke service_role.** service_role går mot PostgREST, som
+   er et data-API og ikke kjører DDL. Det var veggen i august. Skriptet krever
+   `SUPABASE_ACCESS_TOKEN` og sier presist hvorfor hvis den mangler.
+2. **`--prosjekt=` finnes fordi prosjektet normalt er NYTT.** Da peker
+   `.env.local` fortsatt på det gamle, og uten overstyring ville skriptet kjørt
+   mot feil sted. Tørrkjøringen viste nettopp det: den plukket opp det døde
+   prosjektet fra `.env.local`.
+3. **Ingen egen sikringsvakt.** Den ligger i `DEL -1` i `supabase/schema.sql`,
+   som avbryter hvis `public.users` har rader. To vakter som skal si det samme
+   kan komme i utakt; skriptet videreformidler bare feilmeldingen og forklarer
+   at det ikke er en feil i oppsettet.
+
+Kontrollerer åtte tabeller og fire kolonner etterpå — Management API-et svarer
+200 på en kjøring som ikke gjorde noe, og en migrasjon som stilletiende ikke
+slo gjennom oppdages ellers først når appen er i bruk.
+
+Tørrkjørt og feilveien verifisert. **Ikke kjørt mot et ekte prosjekt** — det
+finnes ikke noe å kjøre mot før et nytt er opprettet.
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
