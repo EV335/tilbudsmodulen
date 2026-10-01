@@ -2721,6 +2721,43 @@ slo gjennom oppdages ellers først når appen er i bruk.
 Tørrkjørt og feilveien verifisert. **Ikke kjørt mot et ekte prosjekt** — det
 finnes ikke noe å kjøre mot før et nytt er opprettet.
 
+#### `scripts/nyttprosjekt.ts` — det oppsett.ts sa den ikke kunne
+
+Oppsettskriptet kunne bare kjøre SQL mot et prosjekt som fantes. Det som gjensto
+for hånd — opprett prosjekt, vent på provisjonering, hent nøklene, skriv dem inn
+— er fire steg der tre er venting og avskrift. **Avskrift av nøkler er det eneste
+stedet i hele oppsettet der en tastefeil gir en app som starter helt fint og så
+feiler først ved første databasekall.**
+
+```
+npm run nyttprosjekt            se planen, opprett ingenting
+npm run nyttprosjekt -- --ja    opprett og kjør alt
+```
+
+Oppretter aldri noe uten `--ja`. Det provisjonerer en ekte database på en ekte
+konto; et skript som gjør det fordi noen trykket pil opp og enter, er feil
+utformet.
+
+**Felles maskineri i `scripts/supabase-admin.ts`.** Begge skriptene kjører de
+samme filene gjennom de samme funksjonene. Hadde `nyttprosjekt` fått sin egen
+kopi av steglista, ville rekkefølgen kunnet komme i utakt den dagen en migrasjon
+legges til — og det viser seg som en manglende kolonne i produksjon, ikke som en
+feilmelding. `oppsett.ts` ble slanket tilsvarende.
+
+Tre detaljer:
+- **Region `eu-north-1`** (Stockholm) som standard — nærmest Norge, og innenfor
+  EØS, som gjør personvernspørsmålet enklere når det ligger kundedata i basen.
+- **Databasepassordet genereres** og skrives til `.env.local`, aldri til
+  skjermen. Fila sikkerhetskopieres først, siden den inneholder nøkler som ikke
+  ligger noe annet sted.
+- **Flere organisasjoner stopper skriptet** i stedet for at det gjetter.
+  Prosjektet havner på en faktura; det er feil sted å gjette.
+
+Begge er kjørt og gir riktig utfall: `oppsett --tort` lister åtte filer i
+rekkefølge, `nyttprosjekt` uten `--ja` skriver planen og stopper på manglende
+token. **Ingen av dem er kjørt mot et ekte prosjekt** — det står fortsatt på
+`SUPABASE_ACCESS_TOKEN`.
+
 
 ## Modenhet — ærlig vurdering per 2026-08-13
 

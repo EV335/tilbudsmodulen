@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:pris": "npx --yes tsx scripts/pristest.ts",
-    "oppsett": "npx --yes tsx scripts/oppsett.ts"
+    "oppsett": "npx --yes tsx scripts/oppsett.ts",
+    "nyttprosjekt": "npx --yes tsx scripts/nyttprosjekt.ts"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.8.0",
