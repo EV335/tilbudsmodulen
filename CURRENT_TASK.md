@@ -2777,6 +2777,71 @@ token. **Ingen av dem er kjørt mot et ekte prosjekt** — det står fortsatt p�
 `SUPABASE_ACCESS_TOKEN`.
 
 
+### 54. Appen er oppe igjen, og migrasjonen er kjørt — 2026-10-02
+
+Gjort i brukerens egen Chrome, via Claude in Chrome-utvidelsen, med hans
+innlogginger.
+
+#### Supabase gjenopprettet
+
+Prosjektet `zculzyarnamvrmmhibhn` var **pauset**, ikke slettet (se rettelsen i
+punkt 53). Trykket «Resume project» i dashbordet. Gjenopprettingen tok noen
+minutter, og **alt kom tilbake**:
+
+| Tabell | Rader |
+|---|---|
+| `users` | 3 |
+| `firma` | 2 |
+| `tilbud` | 1 |
+| `customers` | 3 |
+| `invoices` | 6 |
+| `payments` | 4 |
+| `prissatser` | 0 |
+| `etterkalkyler` | 0 |
+
+Produksjon svarer igjen: det offentlige faktura-API-et gikk fra **500 til 404**
+(404 = ukjent token mot en levende base, som er riktig svar).
+
+⚠️ **Prosjektet kan pauses på nytt.** Free-planen pauser etter rundt en uke uten
+aktivitet. Det skjedde én gang og tok appen ned i fem uker uten at noen merket
+det — forsiden er statisk og lastes uansett. Før en ekte kunde slippes inn, må
+dette løses: enten Pro-plan, eller noe som holder basen i live.
+
+#### Migrasjonen `20260825_firma_standardverdier.sql` er kjørt
+
+Den har stått ukjørt siden 25. august. Kjørt nå via SQL Editor i Chrome — SQL-en
+ble lagt på utklippstavla med PowerShell og limt inn, i stedet for å tastes inn
+tegn for tegn. «Success. No rows returned», og verifisert utenfra:
+`standard_timepris`, `standard_margin_prosent` og `standard_fag` finnes nå på
+`firma`, og står `null` for begge firmaene — altså «ikke bestemt», som er
+riktig utgangspunkt.
+
+Dermed virker standardverdiene på «Mitt firma» — men først når PR-en er merget,
+siden produksjon fortsatt kjører august-versjonen.
+
+#### Det jeg IKKE gjorde
+
+**GitHub.** Innloggingssiden sto med brukernavn og passord ferdig utfylt av
+Chrome, men å trykke «Sign in» er å autentisere med passord, og det gjør jeg
+ikke — heller ikke når feltene allerede er fylt. PR-en venter på at brukeren
+logger inn.
+
+**`earmatch`-prosjektet er også pauset.** Samme årsak, samme løsning. Rørt det
+ikke — annet prosjekt.
+
+#### Status nå
+
+| | |
+|---|---|
+| Database | **Oppe**, alle data i behold |
+| Produksjon | **Oppe**, men kjører august-koden |
+| Migrasjoner | Alle åtte kjørt |
+| PR (11 commiter) | Venter på innlogging |
+| Domene | Fortsatt Domeneshop, ikke Vercel |
+| Stripe | Fortsatt testmodus |
+| Malerens poster | Fortsatt ikke mottatt |
+
+
 ## Modenhet — ærlig vurdering per 2026-08-13
 
 | | Score | Kort |
@@ -2864,6 +2929,8 @@ modellen.
    Verifisert utenfra mot den kjørende appen.
 8. ~~**Kjør `migrations/20260817_etterkalkyle.sql`**~~ — **gjort 2026-08-20**,
    se punkt 34. Tabellen finnes, og appen når den.
+   ~~`20260825_firma_standardverdier.sql`~~ — **kjørt 2026-10-02**, se punkt 54.
+   Alle åtte migrasjoner er nå kjørt mot produksjonsbasen.
 9. ~~⚠️ **Betalingslenkene kan peke på et parkert domene**~~ — **løst
    2026-08-20**, se punkt 37. `APP_URL` er satt til vercel.app-adressen og
    appen redeployet, så lenkene i faktura-PDF og e-post er levende.
