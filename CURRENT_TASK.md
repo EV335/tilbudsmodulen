@@ -77,10 +77,15 @@ si hvorfor.
 
 1. ~~**Merge PR-en.**~~ — **gjort 2026-10-02**, se punkt 55. Produksjon kjører
    nå siste kode.
-2. **Malerens poster.** Utfyllingsark laget og klart til å sendes:
+2. **Malerens poster — SENDT 2026-10-02, venter på svar.** Utfyllingsarket er
+   sendt ham på e-post:
    https://claude.ai/code/artifact/d2685715-30e0-42f7-b52d-5c4fc056d8bc
    Han får ett konkret rom og svarer «hvor mange timer». Ti minutter for ham.
    Uten disse tallene priser appen fortsatt for lavt.
+
+   **Dette er nå den eneste tingen som venter på noen utenfor prosjektet.**
+   Kommer svaret, er det en halvtimes jobb å legge postene inn i modellen —
+   og da er begge halvdelene av innvendingen hans lukket.
 3. **Én ekte jobb hele veien** — tilbud, faktura, og timene ført etterpå. Den
    runden avgjør om produktet finnes.
 4. **Koble domenet.** A-peker `76.76.21.21` hos Domeneshop, legg til i Vercel,
@@ -2940,7 +2945,7 @@ ikke — annet prosjekt.
 | PR (11 commiter) | Venter på innlogging |
 | Domene | Fortsatt Domeneshop, ikke Vercel |
 | Stripe | Fortsatt testmodus |
-| Malerens poster | Fortsatt ikke mottatt |
+| Malerens poster | **Sendt 2026-10-02**, venter på svar |
 
 
 ### 55. PR #11 merget — produksjon kjører endelig det som er bygget — 2026-10-02
@@ -2988,7 +2993,8 @@ gamle versjonen.
 
 #### Hva som fortsatt står
 
-1. **Malerens poster** — den eneste som blokkerer selve produktet
+1. **Malerens poster** — **sendt 2026-10-02**, venter på svar. Den eneste som
+   blokkerer selve produktet
 2. **Domenet** — `tilbudsmaskinen.no` peker fortsatt på Domeneshop
 3. **Live Stripe-nøkler** — først når prisen er bekreftet
 4. ⚠️ **Free-planen pauser igjen etter rundt en uke uten aktivitet.** Det tok
