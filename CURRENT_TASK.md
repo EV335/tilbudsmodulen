@@ -16,9 +16,9 @@ Dokumentet er over 3 000 linjer. Dette avsnittet er hele økten 25. august –
 | | |
 |---|---|
 | Database | **Oppe.** Var pauset i fem uker, gjenopprettet 2. okt. Alle data i behold |
-| Produksjon | **Oppe** — men kjører august-koden |
+| Produksjon | **Oppe, og kjører siste kode** — PR #11 merget 2. okt |
 | Migrasjoner | **Alle åtte kjørt** mot produksjonsbasen |
-| Branch `oversikt-og-rommaal` | **12 commiter, pushet, IKKE merget** |
+| `master` | `9a015e8` — alt arbeid fra økten er inne |
 | Domene | `tilbudsmaskinen.no` peker på Domeneshop, ikke Vercel |
 | Stripe | Testmodus. Ingen ekte krone har gått gjennom appen noen gang |
 | Ekte bruk | **Null.** Ett tilbud laget totalt, null timer ført |
@@ -75,8 +75,8 @@ si hvorfor.
 
 ### Hva som blokkerer, i rekkefølge
 
-1. **Merge PR-en.** 12 commiter. Produksjon kjører august-koden til det er
-   gjort. Krever GitHub-innlogging i Chrome — passord fyller jeg ikke inn.
+1. ~~**Merge PR-en.**~~ — **gjort 2026-10-02**, se punkt 55. Produksjon kjører
+   nå siste kode.
 2. **Malerens poster.** Utfyllingsark laget og klart til å sendes:
    https://claude.ai/code/artifact/d2685715-30e0-42f7-b52d-5c4fc056d8bc
    Han får ett konkret rom og svarer «hvor mange timer». Ti minutter for ham.
@@ -2941,6 +2941,59 @@ ikke — annet prosjekt.
 | Domene | Fortsatt Domeneshop, ikke Vercel |
 | Stripe | Fortsatt testmodus |
 | Malerens poster | Fortsatt ikke mottatt |
+
+
+### 55. PR #11 merget — produksjon kjører endelig det som er bygget — 2026-10-02
+
+Gjort i brukerens Chrome etter at han logget inn på GitHub.
+
+**[PR #11](https://github.com/EV335/tilbudsmodulen/pull/11)** — «Tilbudsskjemaet
+bygget om rundt rommålene, ny oversiktsside, bilpleie fjernet». 13 commiter,
+28 filer, 2 checks passert, ingen konflikter mot `master`.
+
+`master` står nå på `9a015e8`. **Arbeidet fra 25. august til 2. oktober er
+endelig ute i produksjon** — det har ligget på en branch i fem uker.
+
+#### Verifisert utenfra etter deploy
+
+| Rute | Svar | |
+|---|---|---|
+| `/oversikt` | **307** | Den nye siden finnes og krever innlogging |
+| `/calc` | 307 | |
+| `/logg-inn`, forsiden | 200 | |
+| Faktura-API | 404 | Levende base, ukjent token |
+
+Og forsiden sier nå **Gulvleggere** og **Flisleggere** der det før sto
+**Bilpleie** — det er den nye koden som kjører, ikke en cachet gammel.
+
+Deployen tok noen minutter. Første runde med sjekker ga fortsatt 404 på
+`/oversikt`, altså gammel kode; ventet den ut og bekreftet etterpå. Verdt å
+huske: et merge er ikke en deploy, og en sjekk rett etter merge måler den
+gamle versjonen.
+
+#### Tre hindre underveis, for den som gjør dette igjen
+
+1. **`scroll_to` på «Create pull request» virket ikke.** Beskrivelsesfeltet
+   vokser og spiser rullingen, så knappen lå 50 000 px over synsfeltet. Løst
+   med `javascript_tool`: finn knappen, `scrollIntoView`, les koordinatene,
+   klikk med ekte mus. Merk at det ligger TO knapper med den teksten — den
+   første har null størrelse.
+2. **«Merging is blocked due to failing merge requirements»** rett etter at
+   PR-en ble opprettet. Det var ikke en blokker — GitHub holdt på å regne ut
+   «ability to merge automatically». Ti sekunder og en omlasting senere var
+   knappen grønn.
+3. **Lange tekster skrives ikke tegn for tegn.** Både PR-beskrivelsen (2 493
+   tegn) og migrasjons-SQL-en ble lagt på utklippstavla med PowerShell
+   `Set-Clipboard` og limt inn med Ctrl+V.
+
+#### Hva som fortsatt står
+
+1. **Malerens poster** — den eneste som blokkerer selve produktet
+2. **Domenet** — `tilbudsmaskinen.no` peker fortsatt på Domeneshop
+3. **Live Stripe-nøkler** — først når prisen er bekreftet
+4. ⚠️ **Free-planen pauser igjen etter rundt en uke uten aktivitet.** Det tok
+   appen ned i fem uker sist uten at noen merket det. Må løses før en ekte
+   kunde får en fakturalenke som skal virke om en måned.
 
 
 ## Modenhet — ærlig vurdering per 2026-08-13
