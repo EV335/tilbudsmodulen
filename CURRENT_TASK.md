@@ -2671,14 +2671,32 @@ zculzyarnamvrmmhibhn.supabase.co  ->  Non-existent domain
 /api/public/invoices/<uuid>       ->  500  (fra Vercel)
 ```
 
-**Ikke pauset — borte.** Et pauset prosjekt svarer fortsatt på DNS. Navnet
-finnes ikke, og det bekreftes uavhengig fra Vercels nettverk: alt som rører
-databasen svarer 500 i produksjon. Forsiden lastes fortsatt, fordi den er
-statisk — så appen *ser* levende ut utenfra mens ingenting virker.
+~~**Ikke pauset — borte.**~~ ⚠️ **FEIL. Rettet 2026-10-02:** prosjektet var
+**pauset**, ikke slettet. Antakelsen min var at et pauset prosjekt fortsatt
+svarer på DNS. Det gjør det ikke — Supabase fjerner oppslaget når et
+free-prosjekt pauses, og «Non-existent domain» er derfor nøyaktig det en pause
+ser ut som utenfra.
 
-Tapt data: seks fakturaer, tre kunder, fire testbetalinger, ett tilbud. Alt var
-testdata (se punkt 52), så det eneste reelle tapet er det ene tilbudet fra
-13. august. Ryddejobben fra punkt 52 løste seg selv.
+**Hele slutningen var bygget på én gjetning om hvordan Supabase oppfører seg,
+og jeg sjekket den aldri mot dashbordet.** De to målingene jeg gjorde — DNS og
+500 fra Vercel — var begge ekte, men de skiller ikke pauset fra slettet. Det
+gjør bare dashbordet.
+
+Dashbordet sa: «All data, including backups and storage objects, remains safe.
+You can resume this project from the dashboard until 10 Oct 2027.»
+
+**Ingenting var tapt.** Seks fakturaer, tre kunder, fire testbetalinger og det
+ene tilbudet fra 13. august er i behold. Ryddejobben fra punkt 52 løste seg
+IKKE selv, og står fortsatt.
+
+Gjenopprettet 2026-10-02 fra dashbordet (Resume project). Merk at
+`scripts/oppsett.ts` og `scripts/nyttprosjekt.ts` dermed ikke trengtes for
+denne saken — de er fortsatt riktige verktøy å ha, men ble bygget på en feil
+diagnose.
+
+**Lærdom:** da jeg konkluderte «slettet», hadde jeg to signaler som begge var
+forenlige med to ulike årsaker, og jeg valgte den verste uten å åpne
+dashbordet. Et oppslag utenfra kan si at noe er nede; det kan ikke si hvorfor.
 
 **Andre funn samme dag:**
 
