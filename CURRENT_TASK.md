@@ -6,6 +6,107 @@ PDF-eksport, historikk (full CRUD), NextAuth-innlogging (EmailProvider/magic-lin
 en lokal Supabase-adapter i `public`-skjemaet), og — nyest — Stripe-betaling og
 fakturering for Privat/Bedrift-kunder.
 
+## LES DETTE FØRST — hvor vi står 2. oktober 2026
+
+Dokumentet er over 3 000 linjer. Dette avsnittet er hele økten 25. august –
+2. oktober oppsummert; detaljene står i punkt 45–54 nederst i kronologien.
+
+### Tilstand akkurat nå
+
+| | |
+|---|---|
+| Database | **Oppe.** Var pauset i fem uker, gjenopprettet 2. okt. Alle data i behold |
+| Produksjon | **Oppe** — men kjører august-koden |
+| Migrasjoner | **Alle åtte kjørt** mot produksjonsbasen |
+| Branch `oversikt-og-rommaal` | **12 commiter, pushet, IKKE merget** |
+| Domene | `tilbudsmaskinen.no` peker på Domeneshop, ikke Vercel |
+| Stripe | Testmodus. Ingen ekte krone har gått gjennom appen noen gang |
+| Ekte bruk | **Null.** Ett tilbud laget totalt, null timer ført |
+
+### Hva som ble bygget i økten
+
+1. **`/oversikt`** — appens forside for innloggede. Nøkkeltall, «neste steg»,
+   treffsikkerhet måned for måned, siste tilbud. Før dette pekte logoen på
+   salgssiden også for den som var logget inn. *(punkt 45)*
+2. **Tilbudsskjemaet bygget om rundt rommålene.** Mål rommet én gang — gulv,
+   tak, vegg og listverk regnes ut derfra og kan ikke sprike. Et første forsøk
+   med en regner per linje ble forkastet nettopp fordi tallene kunne drive fra
+   hverandre. *(punkt 46–47)*
+3. **Bilpleie fjernet.** Faget passet ikke modellen: alt her hviler på et
+   målbart omfang, og en bils pris styres av lakkens tilstand. *(punkt 47)*
+4. **Rommålene lagres med tilbudet** og står i teksten kunden leser. *(punkt 49)*
+5. **«Du har målt opp mer enn du har priset»** — appen spør om flater den har
+   målt, men ingen har priset. *(punkt 50)*
+6. **Standardverdier på firma** — timeprisen tastes ikke inn på nytt hver gang.
+7. **`npm run oppsett` / `npm run nyttprosjekt`** — setter opp databasen fra
+   bunnen. Bygget på en feil diagnose (se under), men fortsatt riktige
+   verktøy å ha. *(punkt 53)*
+
+165 tester, tsc rent, bygg grønt.
+
+### Det viktigste som ble OPPDAGET
+
+**Malervennens tilbakemelding** *(punkt 48)* — den første ekte
+brukertilbakemeldingen i hele prosjektet, etterlyst i dette dokumentet siden
+15. august. Han sier tilbudene ikke beskriver jobben som faktisk skal utføres.
+
+- At en jobb ikke kan være bare gulv *eller* tak — **rettet** (punkt 47)
+- At arbeidet rundt arbeidet mangler — **ÅPENT, og det største hullet.**
+  Tildekking, maskering, vask, flikking og opprydding har ikke én linje i
+  appen. Modellen kan bare prise arbeid som skalerer med en målt mengde.
+
+**Konsekvensen er at appen priser systematisk FOR LAVT.** Det er den farlige
+retningen: et for dyrt tilbud mister du, et for billig får du — og taper på.
+
+### Tre feil jeg gjorde og rettet — samme mønster hver gang
+
+| Påstand | Virkeligheten | Hva som manglet |
+|---|---|---|
+| «Basen er så godt som tom» | 6 fakturaer, 4 betalinger, 3 kunder | Jeg talte bare `tilbud` |
+| «Fire ekte Stripe-betalinger» | `livemode=false` på alle | Jeg sjekket ikke nøkkelen |
+| «Supabase-prosjektet er slettet» | Pauset. Alt i behold | DNS og 500 er forenlig med begge — bare dashbordet skiller |
+
+**Mønsteret: en konklusjon trukket av delvis bevis, der et enkelt ekstra
+oppslag ville avgjort saken.** Det siste kostet mest — jeg bygde to
+oppsettskript for å gjenopprette noe som bare trengte et klikk på «Resume».
+
+Lærdom for neste gang: et oppslag utenfra kan si at noe er nede. Det kan ikke
+si hvorfor.
+
+### Hva som blokkerer, i rekkefølge
+
+1. **Merge PR-en.** 12 commiter. Produksjon kjører august-koden til det er
+   gjort. Krever GitHub-innlogging i Chrome — passord fyller jeg ikke inn.
+2. **Malerens poster.** Utfyllingsark laget og klart til å sendes:
+   https://claude.ai/code/artifact/d2685715-30e0-42f7-b52d-5c4fc056d8bc
+   Han får ett konkret rom og svarer «hvor mange timer». Ti minutter for ham.
+   Uten disse tallene priser appen fortsatt for lavt.
+3. **Én ekte jobb hele veien** — tilbud, faktura, og timene ført etterpå. Den
+   runden avgjør om produktet finnes.
+4. **Koble domenet.** A-peker `76.76.21.21` hos Domeneshop, legg til i Vercel,
+   og sett `APP_URL` samtidig.
+5. **Live Stripe-nøkler** — først når punkt 3 viser at prisen stemmer.
+6. **Stripe Connect** før kollega nummer to tar imot penger.
+
+⚠️ **Og én ting som vil bite igjen:** free-planen pauser prosjektet etter rundt
+én uke uten aktivitet. Det skjedde, og appen lå nede i fem uker uten at noen
+merket det — forsiden er statisk og lastes uansett. Slippes en ekte kunde inn
+før dette er løst, kan fakturalenken hans være død neste gang han åpner den.
+`earmatch`-prosjektet er pauset av samme grunn.
+
+### Ærlig lest
+
+Teknisk er appen mye nærmere enn den føles — timer, ikke uker, bortsett fra
+Stripe Connect. Men «klar til bruk» betyr ikke at koden virker. Det betyr at en
+håndverker kan sende et tilbud han ville stått inne for. Der er vi ikke, og det
+avgjøres av punkt 2 og 3 over — ikke av mer kode.
+
+**Anbefaling: ikke bygg mer før maleren har svart.** Flere runder i denne økten
+gikk med til å rette ting som ble bygget dagen før, fordi vi gjetter i stedet
+for å vite.
+
+---
+
 ## Kronologi og status
 
 ### 1. Auto-mode stabilisering — commit `e31d29a`
