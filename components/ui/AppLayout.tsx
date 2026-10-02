@@ -8,6 +8,7 @@ import Section from '@/components/ui/Section'
 import { useFirma, useManglerFirma } from '@/components/FirmaProvider'
 
 const NAV_LENKER = [
+  { href: '/oversikt', label: 'Oversikt' },
   { href: '/calc', label: 'Nytt tilbud' },
   { href: '/historikk', label: 'Mine tilbud' },
   { href: '/historikk/invoices', label: 'Fakturaer' },
@@ -44,7 +45,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex flex-col bg-dark">
       <header className="border-b border-white/10 bg-darker/90 backdrop-blur">
         <Section size="xl" spacing="none" className="py-4 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-3 text-lg sm:text-xl font-bold tracking-wide text-white min-w-0">
+          {/* Logoen er appens «hjem»-knapp. For en innlogget bruker er hjem
+              oversikten, ikke salgssiden — den sender ham til «Start beregning
+              → Logg inn», en runde han allerede har tatt. */}
+          <Link
+            href={innlogget ? '/oversikt' : '/'}
+            className="flex items-center gap-3 text-lg sm:text-xl font-bold tracking-wide text-white min-w-0"
+          >
             {firma?.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={firma.logo_url} alt="" className="h-8 object-contain shrink-0" />
@@ -61,9 +68,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {/* Desktop: full meny. Under md er det ikke plass — headeren trengte
               865 px med alle lenkene og e-postadressen synlig. */}
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-white/70">
-            <Link href="/" className="transition-colors hover:text-white">
-              Hjem
-            </Link>
+            {/* «Hjem» er salgssiden, og den er bare et sted å gå for den som
+                ikke har konto ennå. Innlogget står «Oversikt» først i stedet —
+                to lenker som begge het hjem, til to ulike sider, er en meny
+                brukeren må gjette i. */}
+            {!innlogget && (
+              <Link href="/" className="transition-colors hover:text-white">
+                Hjem
+              </Link>
+            )}
             {innlogget && (
               <>
                 {NAV_LENKER.map((lenke) => (
@@ -111,9 +124,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {menyApen && innlogget && (
           <nav id="mobilmeny" className="md:hidden border-t border-white/10">
             <Section size="xl" spacing="none" className="py-2 flex flex-col">
-              <Link href="/" className="py-3 text-white/80 border-b border-white/5">
-                Hjem
-              </Link>
               {NAV_LENKER.map((lenke) => (
                 <Link key={lenke.href} href={lenke.href} className="py-3 text-white/80 border-b border-white/5">
                   {lenke.label}

@@ -1,6 +1,6 @@
 # Prismodellen — hvor tallene kommer fra
 
-Sist kalibrert: 13. august 2026.
+Sist kalibrert: 13. august 2026. Utfyllingen bygget om rundt rommålene 25. august 2026.
 
 ## Hvorfor modellen ble bygget om
 
@@ -125,16 +125,104 @@ En hel leilighet — 130 m² vegg + 70 m² tak — gir nå 48 133 kr på 37 time
 et marked på 35 700–64 400. Den jobben kunne den gamle modellen ikke uttrykke i
 det hele tatt: ett felt, ingen mulighet til å skille tak fra vegg.
 
+## Utfyllingen — hva håndverkeren faktisk blir spurt om (25. august 2026)
+
+### Hvilke fag appen er for
+
+Fagene som står igjen deler én egenskap: **håndverkeren måler eller teller noe
+fast, og tallet hans blir tilbudet.**
+
+| Fag | Måler | Enhet |
+|---|---|---|
+| Maler | Vegg, tak, listverk | m², løpemeter, stk |
+| Snekker / gulvlegger | Gulv, listverk | m², løpemeter |
+| Murer / flislegger | Gulv eller vegg | m² |
+| Elektriker | Teller punkter | punkt, stk |
+| Rørlegger | Teller enheter | stk |
+
+**Bilpleie er fjernet (25.08.2026).** Faget passet ikke modellen. Alt her hviler
+på et målbart omfang og på at samme jobb gjøres på samme måte hver gang. En bil
+har ingen av delene: prisen styres av lakkens tilstand og hvor skitten kupeen
+er, og det er en befaring, ikke en utregning. Alle elleve operasjonene sto som
+`anslag` uten ett eneste markedstall. Tallene finnes i git-historikken.
+
+### Rommet: ett sett mål, alle flatene
+
+Hjelpeteksten til `maler_vegg` sa tidligere: «Veggflate, ikke gulvflate. Rom på
+20 m² gulv har typisk 45–55 m² vegg.» Appen ba altså maleren gjøre en omregning
+med tommelfingerregel før han fikk fylle ut feltet.
+
+Første forsøk på å rette det ga hver linje sin egen regner. Det løste
+hoderegningen, men skapte en verre feil: **de samme målene måtte tastes inn på
+nytt per operasjon, og kunne drive fra hverandre.** 21 m² gulv og 23 m² tak i
+samme rom er et tilbud som ikke går opp — og kunden ser det før håndverkeren
+gjør det.
+
+Nå ligger målene på JOBBEN ([lib/mengde.ts](../lib/mengde.ts)), ikke på linja:
+
+```
+gulv     = lengde × bredde
+tak      = lengde × bredde          ← samme tall, per definisjon
+vegg     = 2 × (lengde + bredde) × høyde − dører×1,9 − vinduer×1,4
+listverk = 2 × (lengde + bredde) − dører×0,9
+```
+
+Håndverkeren måler rommet én gang. Hver linje henter mengden sin fra riktig
+tall, og **taket kan ikke bli et annet areal enn gulvet.** Flere rom kan legges
+inn og summeres — en maler priser sjelden ett rom om gangen.
+
+Tre valg det er verdt å kjenne til:
+
+1. **Taket er gulvet.** Skråtak og innkassinger finnes, men da overstyrer
+   håndverkeren linja manuelt. Det er en avgjørelse han tar, ikke en antakelse
+   appen skal gjøre på egen hånd.
+2. **Et rom uten takhøyde teller på gulv og listverk, men ikke på vegg** — og
+   det blir talt opp og sagt fra om. En stille for liten veggflate er et for
+   billig tilbud, og den feilen oppdages først når jobben er gjort.
+3. **`m2_flate` er den eneste tvetydige enheten.** Flis ligger både på gulv og
+   vegg, sparkling på vegg, membran på gulv. Håndverkeren velger flate på linja.
+
+Elektrikeren og rørleggeren ser ikke målefeltene i det hele tatt. De teller
+punkter og enheter, og et areal ville vært støy.
+
+**Samsvarssjekk.** Skriver håndverkeren inn gulv og tak for hånd og de spriker
+med mer enn 10 %, sier appen fra. Kommer begge fra rommålene er de like, og da
+finnes det ingenting å advare om.
+
+### To grep som gjelder alle fagene
+
+**Jobbmaler.** «Ett rom — vegger og tak» krevde fem handlinger for en jobb som
+gjøres hver uke. Nå ett klikk. `antall` settes bare der jobben faktisk er fast
+(ett bad, ett sikringsskap); flatene kommer fra målene.
+
+**Standardverdier på firmaet.** Timeprisen er den samme hver gang, men skjemaet
+startet tomt og krevde den på nytt for hvert tilbud. `firma` har nå
+`standard_timepris`, `standard_margin_prosent` og `standard_fag`, alle nullable
+— NULL betyr «ikke bestemt», og da oppfører skjemaet seg som før. Migrasjon:
+`migrations/20260825_firma_standardverdier.sql`.
+
 ## Satser som IKKE er markedsverifisert
 
 Disse står med `kilde: 'anslag'` i [lib/priser.ts](../lib/priser.ts) og gir et
-varsel i appen. **De trenger en fagperson:**
+varsel i appen. **De trenger en fagperson.** Spørsmålet er ikke «hva bør dette
+koste», men «hvor lang tid bruker du på én enhet».
 
-- Sparkling og grunning (maler)
-- Montere lister (snekker)
-- Membran på våtrom (murer)
-- Bytte toalett, bytte servant/kran (rørlegger)
-- Polering og lakkforsegling, innvendig rens (bilpleie)
+| Fag | Operasjoner |
+|---|---|
+| Maler | Sparkling og grunning, 1 strøk (oppfriskning), listverk og karmer, dør, vindu |
+| Snekker | Montere lister |
+| Murer | Membran på våtrom |
+| Rørlegger | Bytte toalett, bytte servant/kran |
+
+**Malerens nye satser er avledet, ikke funnet.** 1 strøk står på 0,10 t/m² mot
+2 strøk sitt markedsverifiserte 0,15: ett strøk sparer selve påføringen, men
+ikke maskering og rigg, derfor to tredjedeler og ikke halvparten. Dør (1,2 t),
+vindu (1 t) og listverk (0,08 t/lm) er normaltall uten kilde. Alle fem er merket
+`anslag` og varsler i appen.
+
+Ni operasjoner uten markedstall, mot sju før — fire nye hos maleren, to fjernet
+med bilpleie. Appen varsler på hver av dem, og etterkalkylen retter dem etter
+tre førte jobber.
 
 ## Slik kalibrerer du
 
@@ -145,5 +233,9 @@ den samtalen man skal ha med en håndverker, ikke «hva bør dette koste».
 Kontroll etter endring:
 
 ```bash
-npx tsc --noEmit
+npm run test:pris
 ```
+
+Testene vokter blant annet at ingen operasjons-id forsvinner, at hver sats uten
+markedsbånd er merket `anslag`, og at alle jobbmaler peker på operasjoner som
+finnes.

@@ -6,6 +6,7 @@ import ResultCard from '@/components/ResultCard'
 import { TilbudInput, TilbudResult } from '@/lib/ai'
 import Section from '@/components/ui/Section'
 import Button from '@/components/ui/Button'
+import { lesTilbudFraOkt, fjernTilbudFraOkt } from '@/lib/tilbudsokt'
 
 interface Lagret {
   id?: string
@@ -18,13 +19,13 @@ export default function ResultPage() {
   const [klar, setKlar] = useState(false)
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('tilbudsmaskinen:resultat')
+    const raw = lesTilbudFraOkt()
     if (raw) {
       try {
         setData(JSON.parse(raw))
       } catch {
         // Ødelagt/utdatert innhold i sessionStorage skal ikke gi hvit skjerm.
-        sessionStorage.removeItem('tilbudsmaskinen:resultat')
+        fjernTilbudFraOkt()
       }
     }
     setKlar(true)

@@ -6,6 +6,12 @@ import { useSession } from 'next-auth/react'
 export interface Firma {
   firmanavn: string
   logo_url?: string | null
+  // Standardverdiene for tilbudsskjemaet. De hentes her og ikke i kalkulatoren,
+  // av samme grunn som navn og logo: /api/firma ble ellers kalt to ganger paa
+  // samme sidevisning.
+  standard_timepris?: number | null
+  standard_margin_prosent?: number | null
+  standard_fag?: string | null
 }
 
 interface FirmaTilstand {
