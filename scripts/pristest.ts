@@ -55,6 +55,7 @@ import {
   type TreffPunkt,
 } from '@/lib/etterkalkyle'
 import { erForfalt } from '@/lib/fakturaStatus'
+import { cronGodkjent, varselMottaker, nedeMelding } from '@/lib/holdliv'
 
 let feil = 0
 function sjekk(navn: string, bestatt: boolean, detalj = '') {
@@ -811,6 +812,49 @@ sjekk('entydige enheter trenger ikke flatevalg',
 sjekk('punkt og stk spiser ingen flate',
   flatenTil('punkt') === null && flatenTil('stk') === null)
 
-const ANTALL = 165
+// 34) Holdliv -- cron-ruten som skal hindre at basen pauses igjen.
+//     Den forrige pausen tok appen ned i fem uker uten at noen merket det, saa
+//     hele poenget med testene under er at verken oppslaget eller varselet
+//     skal kunne slaa seg av stille.
+
+// Uten CRON_SECRET satt slipper kallet gjennom. Dette ER valget, ikke en
+// glipp: en glemt miljovariabel som gir 401 hver dag ville tatt bort baade
+// oppslaget og varselet -- altsaa gjenskapt feilen vi prover aa fjerne.
+sjekk('ingen hemmelighet satt slipper cron-kallet gjennom', cronGodkjent(null, undefined))
+sjekk('tom hemmelighet teller som ikke satt', cronGodkjent(null, '   '))
+
+// Er den satt, haandheves den fullt ut.
+sjekk('riktig bearer godkjennes', cronGodkjent('Bearer hemmelig', 'hemmelig'))
+sjekk('feil bearer avvises', !cronGodkjent('Bearer noe-annet', 'hemmelig'))
+sjekk('manglende header avvises naar hemmelighet er satt', !cronGodkjent(null, 'hemmelig'))
+sjekk('naken hemmelighet uten "Bearer " avvises', !cronGodkjent('hemmelig', 'hemmelig'))
+sjekk('hemmeligheten sammenlignes trimmet paa begge sider',
+  cronGodkjent('  Bearer hemmelig  ', ' hemmelig '))
+
+// Mottakeren av nedevarselet. VARSEL_EPOST foerst, ellers foerste konkrete
+// adresse i ALLOWED_EMAILS -- fallbacken finnes for at varslingen ikke skal
+// kreve at man husker én variabel mer.
+sjekk('VARSEL_EPOST vinner', varselMottaker('vakt@firma.no', 'even@firma.no') === 'vakt@firma.no')
+sjekk('faller tilbake paa foerste adresse i tilgangslista',
+  varselMottaker(undefined, 'even@firma.no, maler@annetfirma.no') === 'even@firma.no')
+// Et domene er ikke en adresse man kan sende til. Staar det bare domener i
+// lista, har vi ingen mottaker -- og det maa ruten si i loggen, ikke gjette.
+sjekk('et rent domene gir ingen mottaker', varselMottaker(undefined, '@firma.no') === null)
+sjekk('domenet hoppes over naar en adresse ogsaa staar der',
+  varselMottaker(undefined, '@firma.no, even@firma.no') === 'even@firma.no')
+sjekk('tom tilgangsliste gir ingen mottaker', varselMottaker(undefined, '') === null)
+sjekk('tom VARSEL_EPOST teller som ikke satt',
+  varselMottaker('  ', 'even@firma.no') === 'even@firma.no')
+
+// Meldingen skal si hva som er galt OG hva man gjor med det. Forrige gang
+// kostet feildiagnosen «prosjektet er slettet» to unodvendige oppsettskript --
+// ordet «Resume» i varselet er der for at neste mann ikke gjor samme feil.
+const melding = nedeMelding({ oppe: false, feil: 'fetch failed', ms: 10000 })
+sjekk('varselet nevner feilen', melding.includes('fetch failed'))
+sjekk('varselet nevner at prosjektet kan vaere pauset', melding.includes('pauset'))
+sjekk('varselet sier hva man gjor -- Resume', melding.includes('Resume'))
+sjekk('varselet sier at dataene er i behold', melding.includes('i behold'))
+
+const ANTALL = 183
 console.log(feil === 0 ? `\nAlle ${ANTALL} testene passerte.` : `\n${feil} test(er) feilet.`)
 process.exit(feil === 0 ? 0 : 1)

@@ -224,3 +224,77 @@ scopet på bruker.
 
 **Verdt å vite:** alle betalinger går til *din* Stripe-konto. I test-modus er
 det uproblematisk, men det er én ting å avklare før dere går live.
+
+---
+
+## 8. Hold basen i live — og få beskjed når den ikke er
+
+**Dette er ikke en valgfri finpuss.** Supabases free-plan pauser prosjektet
+etter rundt én uke uten aktivitet. Det skjedde i slutten av august 2026, og
+appen lå nede i **fem uker uten at noen merket det**.
+
+Grunnen til at ingen merket det er verdt å feste seg ved: forsiden og
+`/logg-inn` er statiske og svarte 200 hele tiden. Det som var dødt var alt som
+rører databasen — altså betalingslenken en kunde kan ha liggende i innboksen i
+flere uker før han bruker den.
+
+### Hva som er bygget
+
+`vercel.json` planlegger ett kall i døgnet til `/api/cron/holdliv`. Ruten gjør
+to ting:
+
+1. **Ett oppslag mot databasen.** Det holder prosjektet aktivt. Oppslaget er en
+   `count`-spørring uten rader — vi trenger aktivitet, ikke data.
+2. **Feiler oppslaget, går det e-post.** Dette er den viktigste halvdelen: en
+   cron-jobb som slutter å virke sier ingenting av seg selv, og det er nettopp
+   da basen pauses. Uten varselet ville neste pause vært like usynlig som den
+   forrige.
+
+Ruten svarer alltid `200` når den selv virker — også når basen er nede. Vercel
+prøver ikke cron-kall på nytt, så en 500 ville bare gjort utfallet vanskeligere
+å lese i loggen. Status står i svarkroppen.
+
+### To env-variabler hos Vercel
+
+```
+CRON_SECRET=<noe langt og tilfeldig>
+VARSEL_EPOST=deg@firma.no
+```
+
+**`CRON_SECRET`** gjør at bare Vercels egen cron kan kalle ruten. Setter du den,
+sender Vercel den automatisk som `Authorization: Bearer ...` — du trenger ikke
+gjøre noe mer.
+
+Er den **ikke** satt, slipper kallet gjennom likevel. Det er et bevisst valg:
+alternativet — avvis alltid uten hemmelighet — betyr at en glemt variabel gir
+401 hver dag, ingen oppslag mot basen, og en pause ingen får varsel om, siden
+varselet sendes av samme rute. Feilen ville slått ut i presis den retningen vi
+prøver å unngå. Ruten returnerer ingen data, så en åpen variant er til å leve
+med.
+
+**`VARSEL_EPOST`** er hvem som får beskjed. **Sett den.** Er den ikke satt,
+brukes første konkrete adresse i `ALLOWED_EMAILS` — og den lista inneholder
+kollegaer, ikke bare deg. Står malervennen først der, er det han som får
+«databasen svarer ikke» klokka sju om morgenen. Meldingen er ufarlig, men
+den er ikke hans å gjøre noe med.
+
+Står det bare domeneregler (`@firma.no`) i lista, finnes ingen mottaker i det
+hele tatt — da logger ruten det i Vercel-loggen i stedet, og ingen får e-post.
+
+### Sjekk at den virker
+
+Vercel → prosjektet → **Cron Jobs** viser jobben og siste kjøring. Du kan også
+kalle den selv:
+
+```bash
+curl -s https://<appen>/api/cron/holdliv -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Svaret er `{"oppe":true,"ms":...}` når alt står som det skal.
+
+### Det dette ikke løser
+
+Hobby-planen hos Vercel kjører cron-jobber **én gang i døgnet**, innenfor timen
+du har oppgitt. Det er rikelig mot en grense på én uke. Men merk at jobben bare
+kjører så lenge prosjektet er deployet hos Vercel — tar du appen ned der, er
+pausevernet borte også.

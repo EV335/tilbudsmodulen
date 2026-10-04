@@ -6,7 +6,7 @@ PDF-eksport, historikk (full CRUD), NextAuth-innlogging (EmailProvider/magic-lin
 en lokal Supabase-adapter i `public`-skjemaet), og — nyest — Stripe-betaling og
 fakturering for Privat/Bedrift-kunder.
 
-## LES DETTE FØRST — hvor vi står 2. oktober 2026
+## LES DETTE FØRST — hvor vi står 4. oktober 2026
 
 Dokumentet er over 3 000 linjer. Dette avsnittet er hele økten 25. august –
 2. oktober oppsummert; detaljene står i punkt 45–54 nederst i kronologien.
@@ -15,10 +15,10 @@ Dokumentet er over 3 000 linjer. Dette avsnittet er hele økten 25. august –
 
 | | |
 |---|---|
-| Database | **Oppe.** Var pauset i fem uker, gjenopprettet 2. okt. Alle data i behold |
+| Database | **Oppe.** Var pauset i fem uker, gjenopprettet 2. okt. Alle data i behold. Pausevern bygget 4. okt (punkt 56) |
 | Produksjon | **Oppe, og kjører siste kode** — PR #11 merget 2. okt |
 | Migrasjoner | **Alle åtte kjørt** mot produksjonsbasen |
-| `master` | `9a015e8` — alt arbeid fra økten er inne |
+| `master` | `c9b767c`. Pausevernet ligger på branch `holdliv-pausevern` — **ikke merget** |
 | Domene | `tilbudsmaskinen.no` peker på Domeneshop, ikke Vercel |
 | Stripe | Testmodus. Ingen ekte krone har gått gjennom appen noen gang |
 | Ekte bruk | **Null.** Ett tilbud laget totalt, null timer ført |
@@ -93,11 +93,17 @@ si hvorfor.
 5. **Live Stripe-nøkler** — først når punkt 3 viser at prisen stemmer.
 6. **Stripe Connect** før kollega nummer to tar imot penger.
 
-⚠️ **Og én ting som vil bite igjen:** free-planen pauser prosjektet etter rundt
-én uke uten aktivitet. Det skjedde, og appen lå nede i fem uker uten at noen
-merket det — forsiden er statisk og lastes uansett. Slippes en ekte kunde inn
-før dette er løst, kan fakturalenken hans være død neste gang han åpner den.
-`earmatch`-prosjektet er pauset av samme grunn.
+~~⚠️ **Og én ting som vil bite igjen:** free-planen pauser prosjektet etter
+rundt én uke uten aktivitet.~~ — **løst 2026-10-04, se punkt 56.** En daglig
+cron-jobb holder basen aktiv, og sender e-post hvis oppslaget feiler. Den
+andre halvdelen er det som betyr noe: forrige pause var usynlig fordi forsiden
+er statisk og lastet hele tiden.
+
+**Gjenstår hos Vercel:** `VARSEL_EPOST` og `CRON_SECRET`. Uten den første kan
+varselet havne hos malervennen i stedet for deg.
+
+`earmatch`-prosjektet er fortsatt pauset av samme grunn, og har ikke fått
+dette vernet.
 
 ### Ærlig lest
 
@@ -2997,10 +3003,79 @@ gamle versjonen.
    blokkerer selve produktet
 2. **Domenet** — `tilbudsmaskinen.no` peker fortsatt på Domeneshop
 3. **Live Stripe-nøkler** — først når prisen er bekreftet
-4. ⚠️ **Free-planen pauser igjen etter rundt en uke uten aktivitet.** Det tok
-   appen ned i fem uker sist uten at noen merket det. Må løses før en ekte
-   kunde får en fakturalenke som skal virke om en måned.
+4. ~~⚠️ **Free-planen pauser igjen etter rundt en uke uten aktivitet.**~~ —
+   **bygget 2026-10-04, se punkt 56.** Daglig cron holder basen aktiv, og
+   feiler oppslaget går det e-post. Gjenstår: sett `VARSEL_EPOST` og
+   `CRON_SECRET` hos Vercel, ellers kan varselet havne hos malervennen.
 
+
+### 56. Pausevernet er bygget — basen holdes i live, og sier fra — 2026-10-04
+
+Det ene punktet på blokkerlista som ikke ventet på noen utenfor prosjektet.
+Maleren hadde ikke svart (sjekket i innboksen: siste e-post ut 2. okt 15:06,
+ingen svar), så i stedet for å gjette videre på postene hans ble dette tatt.
+
+**Problemet:** free-planen pauser Supabase-prosjektet etter rundt én uke uten
+aktivitet. Det skjedde i slutten av august, og appen lå nede i **fem uker uten
+at noen merket det.** Grunnen til at ingen merket det er den viktige biten:
+forsiden og `/logg-inn` er statiske og svarte 200 hele tiden. Det som var dødt
+var alt som rører databasen — altså betalingslenken en kunde kan ha liggende i
+innboksen i ukevis før han bruker den.
+
+**Løsningen er to deler, og den andre er den som betyr noe:**
+
+| | |
+|---|---|
+| `vercel.json` | Ett cron-kall i døgnet, 07:00 UTC |
+| `/api/cron/holdliv` | Ett oppslag mot basen — holder prosjektet aktivt |
+| **Nedevarsel** | **Feiler oppslaget, går det e-post** |
+
+Uten varselet ville dette vært halvt ferdig. En cron-jobb som slutter å virke
+sier ingenting av seg selv, og det er nettopp da basen pauses — altså ville
+neste pause vært like usynlig som den forrige.
+
+#### Verifisert mot den ekte basen
+
+Dev-server, ekte produksjonsbase, alle tre adgangsveiene:
+
+| Kall | Svar |
+|---|---|
+| Uten `CRON_SECRET` satt | **200** `{"oppe":true,"ms":1339}` — kallet slipper gjennom |
+| Med hemmelighet satt, ingen header | **401** |
+| Med hemmelighet satt, feil verdi | **401** |
+| Med hemmelighet satt, riktig bearer | **200** `{"oppe":true,"ms":546}` |
+
+Oppslaget er en ekte tur til Postgres — `count` uten rader. At det svarte
+`oppe:true` 4. oktober betyr også at basen fortsatt sto oppe to dager etter at
+den ble gjenopprettet.
+
+18 nye tester (183 totalt), `tsc` rent, bygg grønt.
+
+#### To designvalg verdt å kunne begrunne
+
+1. **Mangler `CRON_SECRET`, slipper kallet gjennom.** Det motsatte — avvis
+   alltid uten hemmelighet — gir 401 hver dag på en glemt miljøvariabel, og
+   da forsvinner *både* oppslaget og varselet. Feilen ville slått ut i presis
+   den retningen vi prøver å unngå. Ruten returnerer ingen data.
+2. **Ruten svarer 200 også når basen er nede.** Vercel prøver ikke cron-kall
+   på nytt, så en 500 ville bare gjort utfallet vanskeligere å lese i loggen.
+   Status står i svarkroppen, og er den nede har det gått e-post.
+
+#### ⚠️ Én ting som må settes hos Vercel
+
+`VARSEL_EPOST`. Er den ikke satt, faller mottakeren tilbake på første konkrete
+adresse i `ALLOWED_EMAILS` — og den lista inneholder **malervennen**.
+Rekkefølgen i den er tilfeldig, så står han først, er det han som får
+«databasen svarer ikke» klokka sju om morgenen. Ufarlig, men ikke hans å gjøre
+noe med. `CRON_SECRET` bør settes samtidig.
+
+Lokalt ligger `CRON_SECRET` i `.env.local` som en testverdi — Vercel skal ha
+sin egen.
+
+#### Hva som fortsatt står etter dette
+
+Blokkerlista er uendret bortsett fra at pausevernet er ute av den. Maleren
+svarer eller ikke svarer; det avgjøres ikke av kode.
 
 ## Modenhet — ærlig vurdering per 2026-08-13
 
