@@ -3202,9 +3202,21 @@ på ekte, ikke simulert.
 `noreply@tilbudsmaskinen.no`, ikke spam, med testmerkingen synlig. Det var den
 siste utestede stien i hele pausevernet.
 
+#### E-posten er sendt
+
+Sendt til `maleren.young@gmail.com` 18. oktober, emne «Skjemaet er rettet — nå
+kan du skrive minutter». Teksten sier rett ut at feilen var vår, og at hver
+linje nå har ett felt for timer og ett for minutter.
+
+⚠️ **Share-pinnen var fortsatt ikke flyttet da e-posten gikk.** Bekreftet samme
+dag: «viewers see a pinned earlier version, not this live version». Åpner han
+lenken før pinnen flyttes, får han versjon 1 — den med bare timer — rett etter
+at vi har fortalt ham at den er rettet.
+
 #### Fire steg som er Evens
 
-1. **Flytt share-pinnen** på arket, ellers ser maleren fortsatt versjon 1
+1. **Flytt share-pinnen** på arket, ellers ser maleren fortsatt versjon 1.
+   **Haster nå som e-posten er ute.**
 2. **Sjekk Supabase-dashbordet** — pauset eller borte? Det avgjør alt videre
 3. **Merge PR-en**, og sett `CRON_SECRET` + `VARSEL_EPOST` hos Vercel
 4. **Sett opp UptimeRobot** mot `/api/helse`, 5-minutters intervall
