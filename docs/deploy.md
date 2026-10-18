@@ -292,6 +292,42 @@ curl -s https://<appen>/api/cron/holdliv -H "Authorization: Bearer $CRON_SECRET"
 
 Svaret er `{"oppe":true,"ms":...}` når alt står som det skal.
 
+### Prøv varslingen med vilje
+
+Den ene stien som ellers aldri blir prøvd er den som betyr noe: at e-posten
+faktisk kommer frem når basen er borte. Den kan ikke testes ved å vente på at
+det skjer — da er det for sent.
+
+```bash
+curl -s "https://<appen>/api/cron/holdliv?prove=1" -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Tvinger nede-grenen uten å røre databasen, og sender et varsel som er tydelig
+merket som prøve. Svaret sier hvem det gikk til.
+
+### En vakt som står utenfor
+
+`/api/helse` svarer **200** `{"oppe":true}` eller **503** `{"oppe":false}`, og
+rører basen for å finne ut hvilken. Den er **åpen med vilje** — en ekstern
+uptime-tjeneste kan ikke sende en hemmelighet. Den returnerer ingenting om
+innholdet i basen.
+
+Hullet den lukker: nedevarselet over sendes av den samme cron-jobben som gjør
+sjekken. Slutter jobben å kjøre, stopper varslene samtidig — og da er det
+ingenting igjen som sier fra. Et øye utenfor Vercel ser begge deler.
+
+Sett opp en gratis overvåking (UptimeRobot e.l.):
+
+| Felt | Verdi |
+|---|---|
+| Type | HTTPS |
+| URL | `https://<appen>/api/helse` |
+| Intervall | 5 minutter |
+| Varsel til | din e-post |
+
+503 er med vilje, ikke 200 med `oppe: false`: en uptime-vakt leser
+statuskoden.
+
 ### Det dette ikke løser
 
 Hobby-planen hos Vercel kjører cron-jobber **én gang i døgnet**, innenfor timen

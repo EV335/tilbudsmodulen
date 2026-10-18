@@ -6,7 +6,7 @@ PDF-eksport, historikk (full CRUD), NextAuth-innlogging (EmailProvider/magic-lin
 en lokal Supabase-adapter i `public`-skjemaet), og — nyest — Stripe-betaling og
 fakturering for Privat/Bedrift-kunder.
 
-## LES DETTE FØRST — hvor vi står 4. oktober 2026
+## LES DETTE FØRST — hvor vi står 18. oktober 2026
 
 Dokumentet er over 3 000 linjer. Dette avsnittet er hele økten 25. august –
 2. oktober oppsummert; detaljene står i punkt 45–54 nederst i kronologien.
@@ -15,7 +15,7 @@ Dokumentet er over 3 000 linjer. Dette avsnittet er hele økten 25. august –
 
 | | |
 |---|---|
-| Database | **Oppe.** Var pauset i fem uker, gjenopprettet 2. okt. Alle data i behold. Pausevern bygget 4. okt (punkt 56) |
+| Database | ⚠️ **NEDE IGJEN** per 18. okt, 16 dager etter gjenopprettingen. Pauset eller slettet — bare dashbordet vet (punkt 58) |
 | Produksjon | **Oppe, og kjører siste kode** — PR #11 merget 2. okt |
 | Migrasjoner | **Alle åtte kjørt** mot produksjonsbasen |
 | `master` | `c9b767c`. Pausevernet ligger på branch `holdliv-pausevern` — **ikke merget** |
@@ -86,6 +86,11 @@ si hvorfor.
    **Dette er nå den eneste tingen som venter på noen utenfor prosjektet.**
    Kommer svaret, er det en halvtimes jobb å legge postene inn i modellen —
    og da er begge halvdelene av innvendingen hans lukket.
+
+   **Status 10. okt: fortsatt ingen svar, åtte dager etter.** Arket er rettet
+   så det tar imot «30 min» og ikke bare «0,5» (punkt 57), men **han ser
+   fortsatt den gamle versjonen** til share-pinnen flyttes. Merk også at arket
+   ikke kan rapportere tilbake av seg selv — han må kopiere og sende teksten.
 3. **Én ekte jobb hele veien** — tilbud, faktura, og timene ført etterpå. Den
    runden avgjør om produktet finnes.
 4. **Koble domenet.** A-peker `76.76.21.21` hos Domeneshop, legg til i Vercel,
@@ -3076,6 +3081,133 @@ sin egen.
 
 Blokkerlista er uendret bortsett fra at pausevernet er ute av den. Maleren
 svarer eller ikke svarer; det avgjøres ikke av kode.
+
+### 57. Utfyllingsarket tar imot minutter — 2026-10-10
+
+Maleren har fortsatt ikke svart. Åtte dager, ingen reply i innboksen.
+
+To ting kom ut av å se på arket igjen.
+
+**1. Arket kan ikke si fra til oss.** Det har ingen database — svarene ligger i
+hans egen nettleser (`localStorage`). For at vi skal få noe, må han trykke «Lag
+svartekst», kopiere, åpne e-post og lime inn. Tre manuelle steg, antakelig på
+telefon. «Venter på svar» er altså ikke noe vi kan sjekke; det avhenger helt av
+at han gjør den jobben.
+
+**2. Feltene krevde timer.** En maler tenker «en halvtime», ikke «0,5» — og
+tvinger feltet ham til å regne om, taster han enten feil eller lar være. Det er
+nettopp **småpostene rundt arbeidet** som er korte, altså de vi mangler tall på.
+Feltet jobbet mot sitt eget formål.
+
+Nå tar feltet imot det han faktisk ville skrevet, og viser hva det ble tolket
+som ved siden av — så tolkningen er synlig, ikke skjult:
+
+| Han skriver | Feltet sier |
+|---|---|
+| `30 min`, `30m`, `½` | = 0,5 t |
+| `1t30`, `1:30`, `1 time 30 min` | = 1,5 t |
+| `ca 2`, `cirka 1,5` | = 2 t / 1,5 t |
+| `2-3`, `30-45 min` | = 2,5 t / 0,63 t — midtpunktet |
+| `0,5` | `t` — tier, den gjorde ingen omregning |
+| `tulletekst` | `?` i gult |
+
+Svarteksten bærer timer (det modellen regner med) **og** det han skrev:
+`Rigg og tildekking: 0,5 t (skrev: 30 min)`. Da ser vi om tolkningen var riktig
+i stedet for å måtte stole på den.
+
+**Verifisert:** parseren kjørt rett ut av den publiserte siden mot 32 tilfeller,
+alle stemmer. Strukturen sjekket: 18 tidsfelt treffes, de 4 kronefeltene
+(`m1`, `m2`, `j1`, `j4`) er urørt — de deler CSS-klasse med tidsfeltene, så det
+var den åpenbare måten å ødelegge noe på. **Ikke verifisert:** selve
+DOM-koblingen i en levende nettleser; artefakten kjører i en iframe på et annet
+opphav og lar seg ikke skripte utenfra.
+
+#### ⚠️ Maleren ser fortsatt versjon 1
+
+Delingen er pinnet til en fast versjon. Lenken han har servert `1788013352-cf7a`
+da dette ble sjekket — den gamle. **Share-pinnen må flyttes fra Del-menyen på
+artefakt-siden**, ellers er endringen usynlig for ham. Det han allerede har
+fylt ut overlever: det ligger lokalt på samme adresse.
+
+### 58. Maleren svarte — og basen var nede igjen — 2026-10-18
+
+**Malervennen har svart, og svaret er at han prøvde.** Skjemaet gjorde det
+umulig: feltene var merket `t`, så skrev han `30` betydde det 30 timer, ikke
+30 minutter. Det fantes ingen halvtime og ingen kvarting. Derfor ble arket
+aldri sendt, og derfor sto det stille i seks uker.
+
+Det er verdt å feste seg ved at vi gjettet feil på hvorfor. Antakelsen var at
+kopier-og-send-steget var for tungvint. Den ekte grunnen var ett felt som
+betydde noe annet enn han trodde — og den fikk vi bare ved å spørre.
+
+#### Arket, versjon 3
+
+Hver av de 18 tidsradene har nå **to bokser**:
+
+```
+Rigg og tildekking     [ 1 ] t  [ 15 ] min    = 1,25 t
+Maskering              [   ] t  [ 30 ] min    = 0,5 t
+```
+
+Summen står i enden av linja. Tolkeren fra v2 er beholdt på timeboksen som
+sikkerhetsnett, så «1t15» og «30 min» virker fortsatt der. Fasit-tabellen viser
+nå `3,6 t · 3 t 36 min`, så han kan sammenligne i sine egne enheter, og
+svarteksten bærer begge formene: `1 t 15 min (= 1,25 t)`.
+
+Kopier-og-send er beholdt. En database på arket ble vurdert og forkastet:
+`db` gir `null` til en som ikke er innlogget på claude.ai, og en som åpner en
+delt lenke er «Viewer» og får aldri skrive. Den ville ikke nådd ham.
+
+**Verifisert:** regnestykkene kjørt rett ut av den bygde siden — minuttboksen,
+begge boksene sammen, og visningen. 18 tidsrader bygget om, 4 kronefelt urørt.
+**Én bug fanget underveis:** fasit-tabellen har fra før en `<tr class="sum">`,
+og en bar `.sum`-regel ville truffet totalraden der. Scopet til `.tidsfelt .sum`.
+
+#### ⚠️ Basen var nede igjen — 16 dager etter forrige gjenoppretting
+
+Oppdaget ved en tilfeldighet under en statussjekk. To signaler: appens
+offentlige faktura-API svarte **500** der det svarte 404 den 2. oktober, og
+`zculzyarnamvrmmhibhn.supabase.co` slo ikke opp i DNS i det hele tatt.
+
+**Hvorfor sies ikke.** DNS-bom og 500 er forenlig med både pauset og slettet,
+og bare dashbordet skiller dem. Den forvekslingen kostet to unødvendige
+oppsettskript 1. oktober.
+
+Ingen merket det. Igjen. Forsiden er statisk og svarte 200 hele tiden.
+
+#### Driften, nå på to uavhengige øyne
+
+| | |
+|---|---|
+| `/api/cron/holdliv` | Daglig puls som holder basen aktiv, og e-post når den ikke svarer |
+| `?prove=1` | Tvinger nede-grenen uten å røre basen — så varslingen kan prøves med vilje |
+| `/api/helse` | **Ny.** Åpen rute, 200 eller **503**, for en overvåking utenfor Vercel |
+
+Hullet `/api/helse` lukker: nedevarselet sendes av den samme cron-jobben som
+gjør sjekken. Slutter jobben å kjøre, stopper varslene samtidig — og det er
+nettopp da basen pauses. Ruten er åpen med vilje; en ekstern uptime-tjeneste
+kan ikke sende en hemmelighet, og den sier ingenting om innholdet i basen.
+
+**At basen var nede ga en sjanse vi ellers ikke hadde:** nede-grenen ble testet
+på ekte, ikke simulert.
+
+| Kall | Svar |
+|---|---|
+| `/api/helse` med basen nede | **503** `{"oppe":false}` |
+| `/api/cron/holdliv` med bearer | `{"oppe":false,"feil":"TypeError: fetch failed","ms":7204}` |
+| `?prove=1` med bearer | Varsel sendt |
+| `?prove=1` uten bearer | **401** |
+
+**Og e-posten kom frem.** Verifisert i innboksen: fra
+`noreply@tilbudsmaskinen.no`, ikke spam, med testmerkingen synlig. Det var den
+siste utestede stien i hele pausevernet.
+
+#### Fire steg som er Evens
+
+1. **Flytt share-pinnen** på arket, ellers ser maleren fortsatt versjon 1
+2. **Sjekk Supabase-dashbordet** — pauset eller borte? Det avgjør alt videre
+3. **Merge PR-en**, og sett `CRON_SECRET` + `VARSEL_EPOST` hos Vercel
+4. **Sett opp UptimeRobot** mot `/api/helse`, 5-minutters intervall
 
 ## Modenhet — ærlig vurdering per 2026-08-13
 
